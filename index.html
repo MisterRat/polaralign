@@ -569,13 +569,31 @@
           if (!isMonitoringActive) return;
 
           let gravityEstimate = { x: 0, y: 0, z: 9.81 };
+          let initializedGravity = false;
           let lastSampleTime = 0;
 
           const handleMotion = (event) => {
             if (document.visibilityState !== 'visible') return;
 
+            // Continuous gravity estimation tracking for smooth high-pass filtering
+            if (event.accelerationIncludingGravity && (event.accelerationIncludingGravity.x !== null || event.accelerationIncludingGravity.y !== null || event.accelerationIncludingGravity.z !== null)) {
+              const rawX = event.accelerationIncludingGravity.x || 0;
+              const rawY = event.accelerationIncludingGravity.y || 0;
+              const rawZ = event.accelerationIncludingGravity.z || 0;
+              
+              if (!initializedGravity) {
+                gravityEstimate = { x: rawX, y: rawY, z: rawZ };
+                initializedGravity = true;
+              } else {
+                const alpha = 0.95;
+                gravityEstimate.x = alpha * gravityEstimate.x + (1 - alpha) * rawX;
+                gravityEstimate.y = alpha * gravityEstimate.y + (1 - alpha) * rawY;
+                gravityEstimate.z = alpha * gravityEstimate.z + (1 - alpha) * rawZ;
+              }
+            }
+
             const now = Date.now();
-            if (now - lastSampleTime < 300) return;
+            if (now - lastSampleTime < 200) return;
             lastSampleTime = now;
 
             let accMag = 0;
@@ -585,14 +603,10 @@
               const ay = event.acceleration.y || 0;
               const az = event.acceleration.z || 0;
               accMag = Math.sqrt(ax * ax + ay * ay + az * az);
-            } else if (event.accelerationIncludingGravity && (event.accelerationIncludingGravity.x !== null || event.accelerationIncludingGravity.y !== null || event.accelerationIncludingGravity.z !== null)) {
+            } else if (event.accelerationIncludingGravity) {
               const rawX = event.accelerationIncludingGravity.x || 0;
               const rawY = event.accelerationIncludingGravity.y || 0;
               const rawZ = event.accelerationIncludingGravity.z || 0;
-              const alpha = 0.8;
-              gravityEstimate.x = alpha * gravityEstimate.x + (1 - alpha) * rawX;
-              gravityEstimate.y = alpha * gravityEstimate.y + (1 - alpha) * rawY;
-              gravityEstimate.z = alpha * gravityEstimate.z + (1 - alpha) * rawZ;
 
               const linX = rawX - gravityEstimate.x;
               const linY = rawY - gravityEstimate.y;
@@ -601,7 +615,10 @@
               accMag = Math.sqrt(linX * linX + linY * linY + linZ * linZ);
             }
 
-            const percentVal = Math.min(100, Math.max(0, accMag * 1000));
+            // Subtract sensor baseline noise floor (~0.02 m/s²) and scale 1.0 m/s² acceleration to 100%
+            const netAcc = Math.max(0, accMag - 0.02);
+            const percentVal = Math.min(100, Math.max(0, netAcc * 100));
+
             setCurrentMss(accMag);
             setCurrentAccValue(percentVal);
 
@@ -626,8 +643,9 @@
           const interval = setInterval(() => {
             if (document.visibilityState !== 'visible') return;
             const now = Date.now();
-            const baseNoiseAcc = 0.005 + Math.random() * 0.012;
-            const percentVal = Math.min(100, Math.max(0, baseNoiseAcc * 1000));
+            const baseNoiseAcc = 0.005 + Math.random() * 0.015;
+            const netAcc = Math.max(0, baseNoiseAcc - 0.002);
+            const percentVal = Math.min(100, Math.max(0, netAcc * 100));
 
             setCurrentMss(baseNoiseAcc);
             setCurrentAccValue(percentVal);
@@ -637,7 +655,7 @@
               const filtered = prev.filter((pt) => pt.time >= fiveMinAgo);
               return [...filtered.slice(-500), { time: now, value: percentVal, mss: baseNoiseAcc }];
             });
-          }, 500);
+          }, 400);
 
           return () => clearInterval(interval);
         }, [isMonitoringActive, manualSensorMode]);
@@ -929,7 +947,7 @@
                           ? 'bg-slate-800 text-slate-400'
                           : currentPeak >= 80
                           ? 'bg-red-500/20 text-red-400 border border-red-500/30'
-                          : currentPeak >= 60
+                          : currentPeak >= 40
                           ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
                           : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
                       }`}>
@@ -937,7 +955,7 @@
                           ? 'PAUSED'
                           : currentPeak >= 80
                           ? 'UNSTABLE ⚠'
-                          : currentPeak >= 60
+                          : currentPeak >= 40
                           ? 'MINOR MOVEMENT ⚡'
                           : 'STABLE ✓'}
                       </span>
@@ -961,24 +979,24 @@
                   <div className="grid grid-cols-3 gap-2 text-center text-xs font-mono bg-slate-950/70 p-2.5 rounded-2xl border border-slate-800/80">
                     <div className="space-y-0.5">
                       <div className="text-[10px] text-slate-400 uppercase font-sans">Current</div>
-                      <div className={`font-bold ${currentAccValue >= 80 ? 'text-red-400' : currentAccValue >= 60 ? 'text-amber-400' : 'text-cyan-400'}`}>
+                      <div className={`font-bold ${currentAccValue >= 80 ? 'text-red-400' : currentAccValue >= 40 ? 'text-amber-400' : 'text-cyan-400'}`}>
                         {currentAccValue.toFixed(1)}%
                       </div>
-                      <div className="text-[9px] text-slate-500">{(currentMss * 1000).toFixed(0)} m/s² × 10⁻³</div>
+                      <div className="text-[9px] text-slate-500">{currentMss.toFixed(3)} m/s²</div>
                     </div>
                     <div className="space-y-0.5 border-x border-slate-800/60">
                       <div className="text-[10px] text-slate-400 uppercase font-sans">5-Min Peak</div>
-                      <div className={`font-bold ${currentPeak >= 80 ? 'text-red-400' : currentPeak >= 60 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                      <div className={`font-bold ${currentPeak >= 80 ? 'text-red-400' : currentPeak >= 40 ? 'text-amber-400' : 'text-emerald-400'}`}>
                         {currentPeak.toFixed(1)}%
                       </div>
-                      <div className="text-[9px] text-slate-500">{(peakMss * 1000).toFixed(0)} m/s² × 10⁻³</div>
+                      <div className="text-[9px] text-slate-500">{peakMss.toFixed(3)} m/s²</div>
                     </div>
                     <div className="space-y-0.5">
                       <div className="text-[10px] text-slate-400 uppercase font-sans">5-Min Avg</div>
                       <div className="font-bold text-slate-200">
                         {avgAccValue.toFixed(1)}%
                       </div>
-                      <div className="text-[9px] text-slate-500">{(avgMss * 1000).toFixed(0)} m/s² × 10⁻³</div>
+                      <div className="text-[9px] text-slate-500">{avgMss.toFixed(3)} m/s²</div>
                     </div>
                   </div>
 
@@ -986,18 +1004,18 @@
                   <div className="relative bg-slate-950 rounded-2xl border border-slate-800 p-2">
                     <svg className="w-full h-44 overflow-visible" viewBox="0 0 300 180" preserveAspectRatio="none">
                       {/* Horizontal Background Intensity Zones */}
-                      <rect x="32" y="71" width="258" height="84" fill="#10b981" fillOpacity="0.03" />
-                      <rect x="32" y="43" width="258" height="28" fill="#f59e0b" fillOpacity="0.06" />
+                      <rect x="32" y="99" width="258" height="56" fill="#10b981" fillOpacity="0.03" />
+                      <rect x="32" y="43" width="258" height="56" fill="#f59e0b" fillOpacity="0.06" />
                       <rect x="32" y="15" width="258" height="28" fill="#ef4444" fillOpacity="0.08" />
 
-                      {/* Threshold Horizontal Grid Lines (60% and 80%) */}
-                      <line x1="32" y1="71" x2="290" y2="71" stroke="#f59e0b" strokeWidth="1" strokeDasharray="3 3" opacity="0.6" />
+                      {/* Threshold Horizontal Grid Lines (40% and 80%) */}
+                      <line x1="32" y1="99" x2="290" y2="99" stroke="#f59e0b" strokeWidth="1" strokeDasharray="3 3" opacity="0.6" />
                       <line x1="32" y1="43" x2="290" y2="43" stroke="#ef4444" strokeWidth="1" strokeDasharray="3 3" opacity="0.6" />
 
                       {/* Y-Axis Value Labels (Left) */}
                       <text x="28" y="18" fill="#64748b" fontSize="8" fontFamily="monospace" textAnchor="end">100%</text>
                       <text x="28" y="46" fill="#ef4444" fontSize="8" fontFamily="monospace" textAnchor="end">80%</text>
-                      <text x="28" y="74" fill="#f59e0b" fontSize="8" fontFamily="monospace" textAnchor="end">60%</text>
+                      <text x="28" y="102" fill="#f59e0b" fontSize="8" fontFamily="monospace" textAnchor="end">40%</text>
                       <text x="28" y="158" fill="#64748b" fontSize="8" fontFamily="monospace" textAnchor="end">0%</text>
 
                       {/* Vertical Time Grid Lines (-5m to NOW) */}
@@ -1022,7 +1040,7 @@
                         <path
                           d={svgPathPoints}
                           fill="none"
-                          stroke={currentPeak >= 80 ? '#ef4444' : currentPeak >= 60 ? '#f59e0b' : '#06b6d4'}
+                          stroke={currentPeak >= 80 ? '#ef4444' : currentPeak >= 40 ? '#f59e0b' : '#06b6d4'}
                           strokeWidth="2"
                           strokeLinecap="round"
                           strokeLinejoin="round"
@@ -1032,8 +1050,8 @@
                       {/* Active Pulse Marker at Latest Time */}
                       {latestSvgX !== null && latestSvgY !== null && (
                         <g>
-                          <circle cx={latestSvgX} cy={latestSvgY} r="4" fill={currentAccValue >= 80 ? '#ef4444' : currentAccValue >= 60 ? '#f59e0b' : '#06b6d4'} className="animate-ping" opacity="0.7" />
-                          <circle cx={latestSvgX} cy={latestSvgY} r="3" fill={currentAccValue >= 80 ? '#ef4444' : currentAccValue >= 60 ? '#f59e0b' : '#06b6d4'} />
+                          <circle cx={latestSvgX} cy={latestSvgY} r="4" fill={currentAccValue >= 80 ? '#ef4444' : currentAccValue >= 40 ? '#f59e0b' : '#06b6d4'} className="animate-ping" opacity="0.7" />
+                          <circle cx={latestSvgX} cy={latestSvgY} r="3" fill={currentAccValue >= 80 ? '#ef4444' : currentAccValue >= 40 ? '#f59e0b' : '#06b6d4'} />
                         </g>
                       )}
                     </svg>
