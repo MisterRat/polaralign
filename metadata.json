@@ -1,0 +1,7 @@
+{
+  "name": "Simple Polar Align",
+  "description": "Star tracker polar alignment assistant using GPS and device orientation for true north and latitude adjustment.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": []
+}
+
