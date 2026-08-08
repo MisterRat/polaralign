@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en"> 
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
@@ -175,6 +175,27 @@
                 <rect x="5" y="5" width="14" height="14" rx="2" />
               </svg>
             );
+          case 'book-open':
+            return (
+              <svg {...props}>
+                <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+                <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+              </svg>
+            );
+          case 'sliders':
+            return (
+              <svg {...props}>
+                <line x1="4" y1="21" x2="4" y2="14" />
+                <line x1="4" y1="10" x2="4" y2="3" />
+                <line x1="12" y1="21" x2="12" y2="12" />
+                <line x1="12" y1="8" x2="12" y2="3" />
+                <line x1="20" y1="21" x2="20" y2="16" />
+                <line x1="20" y1="12" x2="20" y2="3" />
+                <line x1="1" y1="14" x2="7" y2="14" />
+                <line x1="9" y1="8" x2="15" y2="8" />
+                <line x1="17" y1="16" x2="23" y2="16" />
+              </svg>
+            );
           case 'zap':
             return (
               <svg {...props}>
@@ -220,6 +241,30 @@
         const [showManualModal, setShowManualModal] = useState(false);
         const [manualLatInput, setManualLatInput] = useState('37.7749');
         const [manualLonInput, setManualLonInput] = useState('-122.4194');
+
+        // Guide Modal
+        const [showGuideModal, setShowGuideModal] = useState(false);
+
+        // Sensitivity Modal State & LocalStorage Persistence
+        const [showSensitivityModal, setShowSensitivityModal] = useState(false);
+        const [sensitivityMaxMss, setSensitivityMaxMss] = useState(() => {
+          try {
+            const saved = localStorage.getItem('polaralign_sensitivity_mss');
+            if (saved) {
+              const parsed = parseFloat(saved);
+              if (!isNaN(parsed) && parsed > 0) return parsed;
+            }
+          } catch (e) {}
+          return 1.0; // Default 1.0 m/s² = 100%
+        });
+
+        const handleSetSensitivity = (val) => {
+          const num = Math.max(0.05, Math.min(10.0, parseFloat(val) || 1.0));
+          setSensitivityMaxMss(num);
+          try {
+            localStorage.setItem('polaralign_sensitivity_mss', num.toString());
+          } catch (e) {}
+        };
 
         // Mount Stability Monitor State
         const [stabilityHistory, setStabilityHistory] = useState([]);
@@ -615,9 +660,11 @@
               accMag = Math.sqrt(linX * linX + linY * linY + linZ * linZ);
             }
 
-            // Subtract sensor baseline noise floor (~0.02 m/s²) and scale 1.0 m/s² acceleration to 100%
-            const netAcc = Math.max(0, accMag - 0.02);
-            const percentVal = Math.min(100, Math.max(0, netAcc * 100));
+            // Subtract sensor baseline noise floor (1% of max strength) and scale 100% Strength to sensitivityMaxMss
+            const floorMss = sensitivityMaxMss * 0.01;
+            const usableRange = Math.max(0.001, sensitivityMaxMss - floorMss);
+            const netAcc = Math.max(0, accMag - floorMss);
+            const percentVal = Math.min(100, Math.max(0, (netAcc / usableRange) * 100));
 
             setCurrentMss(accMag);
             setCurrentAccValue(percentVal);
@@ -634,7 +681,7 @@
           return () => {
             window.removeEventListener('devicemotion', handleMotion, true);
           };
-        }, [isMonitoringActive]);
+        }, [isMonitoringActive, sensitivityMaxMss]);
 
         // Background ambient vibration simulation in manual sensor mode
         useEffect(() => {
@@ -643,9 +690,11 @@
           const interval = setInterval(() => {
             if (document.visibilityState !== 'visible') return;
             const now = Date.now();
-            const baseNoiseAcc = 0.005 + Math.random() * 0.015;
-            const netAcc = Math.max(0, baseNoiseAcc - 0.002);
-            const percentVal = Math.min(100, Math.max(0, netAcc * 100));
+            const baseNoiseAcc = 0.002 + Math.random() * (0.015 * sensitivityMaxMss);
+            const floorMss = sensitivityMaxMss * 0.01;
+            const usableRange = Math.max(0.001, sensitivityMaxMss - floorMss);
+            const netAcc = Math.max(0, baseNoiseAcc - floorMss);
+            const percentVal = Math.min(100, Math.max(0, (netAcc / usableRange) * 100));
 
             setCurrentMss(baseNoiseAcc);
             setCurrentAccValue(percentVal);
@@ -658,9 +707,9 @@
           }, 400);
 
           return () => clearInterval(interval);
-        }, [isMonitoringActive, manualSensorMode]);
+        }, [isMonitoringActive, manualSensorMode, sensitivityMaxMss]);
 
-        // Compute 5-minute rolling statistics & SVG chart points
+        // Compute 5-minute rolling statistics & SVG chart points scaled dynamically to sensitivityMaxMss
         const nowTime = Date.now();
         const validHistory = stabilityHistory.filter((pt) => nowTime - pt.time <= 300000);
 
@@ -669,14 +718,21 @@
         let avgAccValue = 0;
         let avgMss = 0;
 
+        const activeFloorMss = sensitivityMaxMss * 0.01;
+        const activeUsableRange = Math.max(0.001, sensitivityMaxMss - activeFloorMss);
+
         if (validHistory.length > 0) {
           let sumVal = 0;
           let sumMss = 0;
           validHistory.forEach((pt) => {
-            if (pt.value > currentPeak) currentPeak = pt.value;
-            if (pt.mss > peakMss) peakMss = pt.mss;
-            sumVal += pt.value;
-            sumMss += pt.mss;
+            const ptMss = pt.mss !== undefined ? pt.mss : (pt.value / 100) * sensitivityMaxMss;
+            const net = Math.max(0, ptMss - activeFloorMss);
+            const scaledVal = Math.min(100, Math.max(0, (net / activeUsableRange) * 100));
+
+            if (scaledVal > currentPeak) currentPeak = scaledVal;
+            if (ptMss > peakMss) peakMss = ptMss;
+            sumVal += scaledVal;
+            sumMss += ptMss;
           });
           avgAccValue = sumVal / validHistory.length;
           avgMss = sumMss / validHistory.length;
@@ -689,8 +745,12 @@
         if (validHistory.length > 0) {
           const points = validHistory.map((pt) => {
             const elapsedSec = Math.min(300, Math.max(0, (nowTime - pt.time) / 1000));
+            const ptMss = pt.mss !== undefined ? pt.mss : (pt.value / 100) * sensitivityMaxMss;
+            const net = Math.max(0, ptMss - activeFloorMss);
+            const scaledVal = Math.min(100, Math.max(0, (net / activeUsableRange) * 100));
+
             const x = 290 - (elapsedSec / 300) * 258;
-            const y = 155 - (Math.min(100, Math.max(0, pt.value)) / 100) * 140;
+            const y = 155 - (scaledVal / 100) * 140;
             return { x, y };
           });
 
@@ -739,6 +799,15 @@
               </div>
 
               <div className="flex items-center space-x-1.5">
+                <button
+                  onClick={() => setShowGuideModal(true)}
+                  className="px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 hover:bg-indigo-500/30 transition-all cursor-pointer flex items-center gap-1"
+                  title="User Guide & Documentation"
+                >
+                  <Icon name="book-open" className="w-3.5 h-3.5" />
+                  <span>Guide</span>
+                </button>
+
                 {isReady && (
                   <button
                     onClick={() => setShowManualModal(true)}
@@ -1068,6 +1137,15 @@
                         <Icon name="trash-2" className="w-3 h-3" />
                         <span>Clear History</span>
                       </button>
+
+                      <button
+                        onClick={() => setShowSensitivityModal(true)}
+                        className="px-2.5 py-1 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-mono text-[11px] flex items-center gap-1 cursor-pointer transition-all"
+                        title="Adjust 100% Vibration Sensitivity Threshold"
+                      >
+                        <Icon name="sliders" className="w-3 h-3" />
+                        <span>Sensitivity ({sensitivityMaxMss.toFixed(2)} m/s²)</span>
+                      </button>
                     </div>
 
                     <span className="text-[10px] text-slate-500 font-mono">
@@ -1192,6 +1270,222 @@
                       Apply Location & Calculate Declination
                     </button>
                   </form>
+                </div>
+              </div>
+            )}
+
+            {/* SENSITIVITY MODAL */}
+            {showSensitivityModal && (
+              <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+                <div className="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-5 shadow-2xl">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-bold text-sm text-white flex items-center gap-2">
+                      <Icon name="sliders" className="w-4 h-4 text-cyan-400" /> Vibration Sensitivity Scale
+                    </h3>
+                    <button onClick={() => setShowSensitivityModal(false)} className="p-1 text-slate-400 hover:text-white cursor-pointer">
+                      <Icon name="x" className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div className="space-y-4">
+                    <p className="text-xs text-slate-300 leading-relaxed">
+                      Set the acceleration threshold that represents <strong className="text-cyan-300">100% Max Vibration Strength</strong>. All monitor indicators scale automatically as a percentage of this value.
+                    </p>
+
+                    {/* Preset Buttons */}
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] text-slate-400 font-mono uppercase">Preset Sensitivity Levels</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {[
+                          { label: '0.20 m/s²', name: 'Ultra-Sensitive', val: 0.2 },
+                          { label: '0.50 m/s²', name: 'High Sensitivity', val: 0.5 },
+                          { label: '1.00 m/s²', name: 'Standard (Default)', val: 1.0 },
+                          { label: '2.00 m/s²', name: 'Coarse / Windy', val: 2.0 }
+                        ].map((preset) => (
+                          <button
+                            key={preset.val}
+                            onClick={() => handleSetSensitivity(preset.val)}
+                            className={`p-2 rounded-xl text-left border text-xs transition-all cursor-pointer ${
+                              Math.abs(sensitivityMaxMss - preset.val) < 0.01
+                                ? 'bg-cyan-500/20 border-cyan-500 text-cyan-200 font-bold'
+                                : 'bg-slate-950/60 border-slate-800 text-slate-300 hover:bg-slate-800'
+                            }`}
+                          >
+                            <div className="font-mono">{preset.label}</div>
+                            <div className="text-[10px] text-slate-400 font-normal">{preset.name}</div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Custom Range Slider */}
+                    <div className="p-3 bg-slate-950 rounded-2xl border border-slate-800 space-y-2">
+                      <div className="flex justify-between items-center text-xs font-mono">
+                        <span className="text-slate-400">Custom 100% Limit:</span>
+                        <span className="text-cyan-300 font-bold">{sensitivityMaxMss.toFixed(2)} m/s²</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0.05"
+                        max="3.00"
+                        step="0.05"
+                        value={sensitivityMaxMss}
+                        onChange={(e) => handleSetSensitivity(e.target.value)}
+                        className="w-full accent-cyan-400 cursor-pointer"
+                      />
+                    </div>
+
+                    {/* Calculated Scaled Threshold Breakdown */}
+                    <div className="p-3 bg-slate-950/80 rounded-2xl border border-slate-800/80 text-[11px] space-y-2">
+                      <div className="font-mono uppercase text-[10px] text-slate-400 border-b border-slate-800 pb-1">
+                        Scaled Threshold Breakdown
+                      </div>
+                      <div className="grid grid-cols-3 gap-1 text-center font-mono">
+                        <div className="p-1.5 rounded-lg bg-slate-900 border border-slate-800">
+                          <div className="text-slate-400 text-[10px]">Floor (1%)</div>
+                          <div className="text-slate-200 font-bold">{(sensitivityMaxMss * 0.01).toFixed(3)}</div>
+                          <div className="text-[9px] text-slate-500">m/s²</div>
+                        </div>
+                        <div className="p-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30">
+                          <div className="text-amber-400 text-[10px]">Amber (40%)</div>
+                          <div className="text-amber-300 font-bold">{(sensitivityMaxMss * 0.40).toFixed(3)}</div>
+                          <div className="text-[9px] text-slate-500">m/s²</div>
+                        </div>
+                        <div className="p-1.5 rounded-lg bg-red-500/10 border border-red-500/30">
+                          <div className="text-red-400 text-[10px]">Red (80%)</div>
+                          <div className="text-red-300 font-bold">{(sensitivityMaxMss * 0.80).toFixed(3)}</div>
+                          <div className="text-[9px] text-slate-500">m/s²</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => setShowSensitivityModal(false)}
+                    className="w-full py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs transition-all cursor-pointer"
+                  >
+                    Save & Done
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* IN-APP USER GUIDE MODAL */}
+            {showGuideModal && (
+              <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-3 sm:p-4">
+                <div className="w-full max-w-md max-h-[90vh] bg-slate-900 border border-slate-800 rounded-3xl flex flex-col shadow-2xl overflow-hidden">
+                  
+                  {/* Guide Header */}
+                  <div className="p-4 border-b border-slate-800 flex items-center justify-between shrink-0 bg-slate-950/80">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 rounded-xl bg-indigo-500/20 text-indigo-400">
+                        <Icon name="book-open" className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-sm text-white leading-tight">User Guide & Reference</h3>
+                        <p className="text-[10px] text-slate-400">Simple Polar Align Field Guide</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setShowGuideModal(false)}
+                      className="px-3 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs transition-all flex items-center gap-1 cursor-pointer shadow"
+                    >
+                      <span>Return to App</span>
+                      <Icon name="x" className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  {/* Scrollable Guide Content */}
+                  <div className="p-5 overflow-y-auto space-y-6 text-xs text-slate-300 leading-relaxed">
+                    
+                    {/* Introduction Section */}
+                    <div className="p-3.5 rounded-2xl bg-indigo-950/30 border border-indigo-500/30 space-y-2">
+                      <h4 className="font-bold text-indigo-300 text-xs flex items-center gap-1.5">
+                        <Icon name="compass" className="w-3.5 h-3.5 text-indigo-400" />
+                        How Sensor-Based Alignment Works
+                      </h4>
+                      <p className="text-[11px] text-slate-300">
+                        This app aligns your tracker mount using your phone's internal sensors. It reads your GPS position, calculates the local <strong class="text-cyan-300">Magnetic Declination</strong> (the difference between magnetic north and true celestial north/south), and uses your phone's compass and pitch sensors to guide alignment in two physical axes.
+                      </p>
+                    </div>
+
+                    {/* Step-by-Step Alignment Process */}
+                    <div className="space-y-4">
+                      <h4 className="font-bold text-white text-xs uppercase tracking-wider text-slate-400 border-b border-slate-800 pb-1">
+                        How to Align Your Tracker Mount
+                      </h4>
+
+                      {/* Step 1 */}
+                      <div className="space-y-1 bg-slate-950/60 p-3 rounded-2xl border border-slate-800">
+                        <div className="font-bold text-cyan-300 flex items-center gap-1.5">
+                          <span className="w-4 h-4 rounded-full bg-cyan-500/20 text-cyan-300 flex items-center justify-center text-[10px] font-mono">1</span>
+                          <span>Position Phone via Phone Mount</span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 pl-5">
+                          Do not lay your phone directly against the metal mount, as magnetic metal parts interfere with compass sensors. Use a phone mount or bracket that holds the phone slightly away while keeping it aligned parallel or perpendicular to the mount's axis.
+                        </p>
+                      </div>
+
+                      {/* Step 2 */}
+                      <div className="space-y-1 bg-slate-950/60 p-3 rounded-2xl border border-slate-800">
+                        <div className="font-bold text-cyan-300 flex items-center gap-1.5">
+                          <span className="w-4 h-4 rounded-full bg-cyan-500/20 text-cyan-300 flex items-center justify-center text-[10px] font-mono">2</span>
+                          <span>Adjust Altitude Axis (Tilt Up / Down)</span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 pl-5">
+                          Tilt your mount wedge vertically. Follow the on-screen Altitude guidance arrows until the pitch angle matches your local latitude target.
+                        </p>
+                      </div>
+
+                      {/* Step 3 */}
+                      <div className="space-y-1 bg-slate-950/60 p-3 rounded-2xl border border-slate-800">
+                        <div className="font-bold text-cyan-300 flex items-center gap-1.5">
+                          <span className="w-4 h-4 rounded-full bg-cyan-500/20 text-cyan-300 flex items-center justify-center text-[10px] font-mono">3</span>
+                          <span>Adjust Azimuth Axis (Rotate Left / Right)</span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 pl-5">
+                          Rotate your mount wedge horizontally. The app uses the compass and calculated declination offset to point your mount wedge directly toward True Celestial North (or South).
+                        </p>
+                      </div>
+
+                      {/* Step 4 */}
+                      <div className="space-y-1 bg-slate-950/60 p-3 rounded-2xl border border-slate-800">
+                        <div className="font-bold text-cyan-300 flex items-center gap-1.5">
+                          <span className="w-4 h-4 rounded-full bg-cyan-500/20 text-cyan-300 flex items-center justify-center text-[10px] font-mono">4</span>
+                          <span>Mount Stability Monitor</span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 pl-5">
+                          Monitors micro-vibrations in real time using your accelerometer. Review the 5-minute rolling graph to detect wind gusts, ground settling, or mount wedge movement.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* PWA & Offline Use */}
+                    <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-2">
+                      <h4 className="font-bold text-white text-xs flex items-center gap-1.5">
+                        <Icon name="sparkles" className="w-3.5 h-3.5 text-cyan-400" />
+                        PWA & Dark-Sky Field Offline Use
+                      </h4>
+                      <p className="text-[11px] text-slate-300">
+                        Save Simple Polar Align to your phone's home screen for field use without cell coverage:
+                      </p>
+                      <div className="grid grid-cols-2 gap-2 pt-1 font-mono text-[10px]">
+                        <div className="p-2 rounded-xl bg-slate-900 border border-slate-800">
+                          <strong className="block text-cyan-400 mb-0.5">iPhone / iPad (Safari)</strong>
+                          <span>Tap Share <span className="text-cyan-300">⎋</span> → "Add to Home Screen"</span>
+                        </div>
+                        <div className="p-2 rounded-xl bg-slate-900 border border-slate-800">
+                          <strong className="block text-cyan-400 mb-0.5">Android (Chrome)</strong>
+                          <span>Tap Options <span className="text-cyan-300">⋮</span> → "Install App"</span>
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-emerald-400 pt-1 font-mono">
+                        ✓ 100% Private local execution — Zero data ever leaves your phone.
+                      </p>
+                    </div>
+
+                  </div>
+
                 </div>
               </div>
             )}
