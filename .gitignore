@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+bun.lock
+
+# Build and distribution outputs
+dist/
+build/
+coverage/
+
+# Unused directories
+src/
+
+# Logs and environment variables
+*.log
+.env*
+
+# Platform / Container runtime metadata (AI Studio specific)
+metadata.json
+assets/
+
+# OS and IDE junk
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
