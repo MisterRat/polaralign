@@ -21,7 +21,7 @@ This document details the complete mathematical and algorithmic pipeline utilize
                                ┌─────────────────────────┐
                                │     GPS / GNSS Module   │
                                └────────────┬────────────┘
-                                            │ Latitude (ϕ), Longitude (λ)
+                                            │ Latitude (lat), Longitude (lon)
                                             ▼
                                ┌─────────────────────────┐
                                │ Geomagnetic Model (WMM) │
@@ -50,23 +50,31 @@ This document details the complete mathematical and algorithmic pipeline utilize
 
 ### 3.1. Geomagnetic Declination Modeling
 
-Magnetic compasses measure **Magnetic North**, which deviates from **True North** by the **Magnetic Declination ($\delta$)**. Declination varies dynamically based on geographic coordinates ($\phi, \lambda$) and epoch time.
+Magnetic compasses measure **Magnetic North**, which deviates from **True North** by the **Magnetic Declination (`δ`)**. Declination varies dynamically based on geographic coordinates (`lat`, `lon`) and epoch time.
 
 #### Mathematical Model
-In lightweight embedded environments where full NOAA World Magnetic Model (WMM) spherical harmonic coefficients ($N=12$) are too memory-intensive, an empirical multi-region trigonometric approximation is applied:
+In lightweight embedded environments where full NOAA World Magnetic Model (WMM) spherical harmonic coefficients (`N = 12`) are too memory-intensive, an empirical multi-region trigonometric approximation is applied:
 
 1. **Global Base Coordinate Model:**
-   $$\delta_{\text{base}} = 0.17 \cdot \sin\left(\lambda \cdot \frac{\pi}{180}\right) \cdot \cos\left(\phi \cdot \frac{\pi}{180}\right) - 0.05 \cdot \left(\frac{\lambda}{30}\right) + \text{HemisphereOffset}(\phi)$$
+   ```text
+   rad = π / 180
+   dec_base = 0.17 * sin(lon * rad) * cos(lat * rad) - 0.05 * (lon / 30) + HemisphereOffset(lat)
 
-   $$\text{Where } \text{HemisphereOffset}(\phi) = \begin{cases} 0.0008 \cdot \phi & \text{if } \phi \ge 0 \text{ (Northern)} \\ -0.0012 \cdot \phi & \text{if } \phi < 0 \text{ (Southern)} \end{cases}$$
+   Where HemisphereOffset(lat) =
+     +0.0008 * lat   if lat >= 0 (Northern Hemisphere)
+     -0.0012 * lat   if lat < 0  (Southern Hemisphere)
+   ```
 
 2. **Regional Polynomial Corrections (High Density Observation Zones):**
-   * **North America ($20^\circ \le \phi \le 65^\circ, -170^\circ \le \lambda \le -50^\circ$):**
-     $$\delta_{\text{US}} = -0.15 \cdot (\lambda + 95) + 0.05 \cdot (\phi - 40)$$
-     $$\delta_{\text{final}} = 0.8 \cdot \delta_{\text{US}} + 0.2 \cdot \delta_{\text{base}}$$
-
-   * **Europe ($35^\circ \le \phi \le 70^\circ, -10^\circ \le \lambda \le 40^\circ$):**
-     $$\delta_{\text{final}} = 3.0 + 0.08 \cdot (\lambda - 10) - 0.05 \cdot (\phi - 50)$$
+   * **North America (`20° <= lat <= 65°`, `-170° <= lon <= -50°`):**
+     ```text
+     dec_US = -0.15 * (lon + 95) + 0.05 * (lat - 40)
+     dec_final = 0.8 * dec_US + 0.2 * dec_base
+     ```
+   * **Europe (`35° <= lat <= 70°`, `-10° <= lon <= 40°`):**
+     ```text
+     dec_final = 3.0 + 0.08 * (lon - 10) - 0.05 * (lat - 50)
+     ```
 
 #### TypeScript Reference Implementation
 ```typescript
@@ -95,51 +103,61 @@ function calculateMagneticDeclination(lat: number, lon: number): number {
 ### 3.2. Azimuth Alignment & Shortest-Path Heading Differential
 
 #### Coordinate Definitions
-* **True Heading ($H_{\text{true}}$):** Heading relative to True Geographic North.
-* **Target Bearing ($B_{\text{target}}$):** $0^\circ$ (True North) for Northern Hemisphere ($\phi \ge 0$), $180^\circ$ (True South) for Southern Hemisphere ($\phi < 0$).
+* **True Heading (`H_true`):** Heading relative to True Geographic North.
+* **Target Bearing (`B_target`):** `0°` (True North) for Northern Hemisphere (`lat >= 0`), `180°` (True South) for Southern Hemisphere (`lat < 0`).
 
-#### Formulae
-$$\text{Magnetic Heading: } H_{\text{mag}} = \text{Norm}_{360}(\text{Raw Magnetometer Heading})$$
+#### Formulas
+```text
+Magnetic Heading:  H_mag  = Norm360(Raw Magnetometer Heading)
+True Heading:      H_true = Norm360(H_mag + δ)
+Angular Diff:      ΔAz    = (B_target - H_true) mod 360
 
-$$\text{True Heading: } H_{\text{true}} = \text{Norm}_{360}(H_{\text{mag}} + \delta)$$
-
-$$\text{Shortest Angular Difference: } \Delta Az = (B_{\text{target}} - H_{\text{true}}) \pmod{360}$$
-
-$$\text{Shortest Path Wrap: } \Delta Az = \begin{cases} \Delta Az - 360 & \text{if } \Delta Az > 180 \\ \Delta Az + 360 & \text{if } \Delta Az < -180 \\ \Delta Az & \text{otherwise} \end{cases}$$
+Shortest Path Wrap:
+  ΔAz = ΔAz - 360   if ΔAz > 180
+  ΔAz = ΔAz + 360   if ΔAz < -180
+```
 
 #### Actuator Directive Decision Table
-| Differential $\Delta Az$ | Rotation Directive | Physical Meaning |
+| Differential `ΔAz` | Rotation Directive | Physical Meaning |
 | :--- | :--- | :--- |
-| $\Delta Az > 0$ | **Rotate Base RIGHT (CW)** | Mount is pointing West of Celestial Pole |
-| $\Delta Az < 0$ | **Rotate Base LEFT (CCW)** | Mount is pointing East of Celestial Pole |
-| $|\Delta Az| \le 1.5^\circ$ | **AZIMUTH LOCKED ✓** | Pointed within tolerance of True Celestial Pole |
+| `ΔAz > 0` | **Rotate Base RIGHT (CW)** | Mount is pointing West of Celestial Pole |
+| `ΔAz < 0` | **Rotate Base LEFT (CCW)** | Mount is pointing East of Celestial Pole |
+| `abs(ΔAz) <= 1.5°` | **AZIMUTH LOCKED ✓** | Pointed within tolerance of True Celestial Pole |
 
 ---
 
 ### 3.3. Elevation / Altitude Wedge Tilt Alignment
 
-Polar elevation angle is equal to the user's geographic latitude absolute value:
+Polar elevation angle is equal to the absolute value of the user's geographic latitude:
 
-$$Alt_{\text{target}} = |\phi|$$
+```text
+Alt_target = abs(lat)
+```
 
 #### IMU Pitch Extraction & Mounting Geometry Mapping
-Depending on the physical mounting orientation of the sensor enclosure relative to the telescope mount, pitch ($\beta$) and roll ($\gamma$) angles must be mapped:
+Depending on the physical mounting orientation of the sensor enclosure relative to the telescope mount, pitch (`β`) and roll (`γ`) angles must be mapped:
 
 1. **Standard Flat Mounting (Sensors parallel to horizon):**
-   $$Alt_{\text{measured}} = |\text{Pitch}|$$
+   ```text
+   Alt_measured = abs(Pitch)
+   ```
 
-2. **Inverted / Parallel Pole-Facing Mount (Pitch $> 90^\circ$):**
-   $$Alt_{\text{measured}} = |180^\circ - \text{Pitch}|$$
+2. **Inverted / Parallel Pole-Facing Mount (`Pitch > 90°`):**
+   ```text
+   Alt_measured = abs(180° - Pitch)
+   ```
 
-3. **Altitude Error Differential ($\Delta Alt$):**
-   $$\Delta Alt = Alt_{\text{measured}} - Alt_{\text{target}}$$
+3. **Altitude Error Differential (`ΔAlt`):**
+   ```text
+   ΔAlt = Alt_measured - Alt_target
+   ```
 
 #### Actuator Directive Decision Table
-| Differential $\Delta Alt$ | Actuator Directive | Physical Meaning |
+| Differential `ΔAlt` | Actuator Directive | Physical Meaning |
 | :--- | :--- | :--- |
-| $\Delta Alt > 0$ | **Lower Wedge Tilt ⬇** | Mount axis elevated too high above horizon |
-| $\Delta Alt < 0$ | **Raise Wedge Tilt ⬆** | Mount axis pointing too low relative to pole |
-| $|\Delta Alt| \le 1.0^\circ$ | **ALTITUDE LOCKED ✓** | Altitude matched to target geographic latitude |
+| `ΔAlt > 0` | **Lower Wedge Tilt ⬇** | Mount axis elevated too high above horizon |
+| `ΔAlt < 0` | **Raise Wedge Tilt ⬆** | Mount axis pointing too low relative to pole |
+| `abs(ΔAlt) <= 1.0°` | **ALTITUDE LOCKED ✓** | Altitude matched to target geographic latitude |
 
 ---
 
@@ -147,18 +165,21 @@ Depending on the physical mounting orientation of the sensor enclosure relative 
 
 Raw MEMS sensor streams suffer from high-frequency electromagnetic noise, thermal drift, and human touch jitter. A standard Exponential Moving Average (EMA) causes lag when moving rapidly, but insufficient smoothing when static.
 
-To resolve this, an **Adaptive Dynamic Alpha EMA Filter** adjusts the coefficient $\alpha$ dynamically based on instantaneous angular velocity:
+To resolve this, an **Adaptive Dynamic Alpha EMA Filter** adjusts the coefficient `α` dynamically based on instantaneous angular velocity:
 
-$$\theta_{\text{smoothed}, t} = \theta_{\text{smoothed}, t-1} + \Delta\theta \cdot \alpha(\Delta\theta)$$
+```text
+theta_smoothed[t] = theta_smoothed[t-1] + Δtheta * α(Δtheta)
 
-$$\text{Where } \Delta\theta = (\theta_{\text{raw}, t} - \theta_{\text{smoothed}, t-1}) \pmod{360}$$
+Where Δtheta = (theta_raw[t] - theta_smoothed[t-1]) mod 360
+```
 
 #### Dynamic Alpha Mapping Function:
-$$\alpha(\Delta\theta) = \begin{cases} 
-0.06 & \text{if } |\Delta\theta| < 0.5^\circ \quad \text{(High damping while stationary)} \\
-0.22 & \text{if } |\Delta\theta| > 4.0^\circ \quad \text{(Fast response during rapid motor slew)} \\
-0.06 + (|\Delta\theta| - 0.5) \cdot 0.045 & \text{otherwise (Smooth linear interpolation)}
-\end{cases}$$
+```text
+α(Δtheta) =
+  0.06                            if abs(Δtheta) < 0.5°  (High damping while stationary)
+  0.22                            if abs(Δtheta) > 4.0°  (Fast response during rapid motor slew)
+  0.06 + (abs(Δtheta) - 0.5) * 0.045  otherwise          (Smooth linear interpolation)
+```
 
 ```typescript
 function adaptiveLowPassFilter(raw: number, currentSmoothed: number): number {
@@ -181,24 +202,33 @@ function adaptiveLowPassFilter(raw: number, currentSmoothed: number): number {
 Autonomous telescopes require structural stability before astrophotography exposures can begin. Wind gusts, cable drag, or motor movement introduce micro-vibrations.
 
 #### Gravity Separation High-Pass Filter
-The total acceleration measured by a 3-axis accelerometer ($\mathbf{a}_{\text{raw}}$) contains both constant Earth gravity ($\mathbf{g}$) and dynamic linear acceleration ($\mathbf{a}_{\text{linear}}$):
+The total acceleration measured by a 3-axis accelerometer (`a_raw`) contains both constant Earth gravity (`g`) and dynamic linear acceleration (`a_linear`):
 
-$$\mathbf{a}_{\text{raw}} = \mathbf{g} + \mathbf{a}_{\text{linear}}$$
+```text
+a_raw = g + a_linear
+```
 
-1. **Estimate Gravity Vector using Low-Pass Filtering ($\alpha_g = 0.95$):**
-   $$\mathbf{g}_t = \alpha_g \mathbf{g}_{t-1} + (1 - \alpha_g) \mathbf{a}_{\text{raw}, t}$$
+1. **Estimate Gravity Vector using Low-Pass Filtering (`α_g = 0.95`):**
+   ```text
+   g[t] = α_g * g[t-1] + (1 - α_g) * a_raw[t]
+   ```
 
 2. **Isolate Dynamic Vibration Acceleration Vector:**
-   $$\mathbf{a}_{\text{linear}, t} = \mathbf{a}_{\text{raw}, t} - \mathbf{g}_t$$
+   ```text
+   a_linear[t] = a_raw[t] - g[t]
+   ```
 
-3. **Compute Vibration Vector Magnitude ($|\mathbf{a}_{\text{linear}}|$):**
-   $$\|\mathbf{a}_{\text{linear}}\| = \sqrt{a_{lx}^2 + a_{ly}^2 + a_{lz}^2} \quad (\text{in } \text{m/s}^2)$$
+3. **Compute Vibration Vector Magnitude (`|a_linear|`):**
+   ```text
+   ||a_linear|| = sqrt(a_lx^2 + a_ly^2 + a_lz^2)   (in m/s²)
+   ```
 
 4. **Normalized Sensitivity Scaling Against Noise Floor:**
-   $$\text{Usable Range } R = M_{\text{max}} - 0.01 \cdot M_{\text{max}}$$
-   $$\text{Vibration Strength } (\%) = \min\left(100, \max\left(0, \frac{\max(0, \|\mathbf{a}_{\text{linear}}\| - 0.01 \cdot M_{\text{max}})}{R} \times 100\right)\right)$$
-
-   *Where $M_{\text{max}}$ is the configurable trip sensitivity threshold (default $1.0\text{ m/s}^2$).*
+   ```text
+   Usable Range R = M_max - (0.01 * M_max)
+   Vibration Strength (%) = min(100, max(0, (max(0, ||a_linear|| - 0.01 * M_max) / R) * 100))
+   ```
+   *Where `M_max` is the configurable trip sensitivity threshold (default `1.0 m/s²`).*
 
 ---
 
@@ -227,7 +257,7 @@ For developers designing autonomous motorized mounts (stepper motor-driven Az/Al
             ┌──────────────────┴──────────────────┐
             ▼                                     ▼
    ┌──────────────────┐                  ┌──────────────────┐
-   │   |ΔAz| > 1.5°   │                  │   |ΔAlt| > 1.0°  │
+   │   abs(ΔAz) > 1.5°│                  │  abs(ΔAlt) > 1.0°│
    └────────┬─────────┘                  └────────┬─────────┘
             │ YES                                 │ YES
             ▼                                     ▼
@@ -246,14 +276,14 @@ For developers designing autonomous motorized mounts (stepper motor-driven Az/Al
                                ▼
    ┌────────────────────────────────────────────────────────┐
    │ 5. Lock Alignment & Handover to Tracking Drive Rate    │
-   │    (Sidereal Speed = 15.041"/sec)                      │
+   │    (Sidereal Speed = 15.041 arcsec/sec)                │
    └────────────────────────────────────────────────────────┘
 ```
 
 ### 4.2. Mitigation of Electromagnetic Anomaly Disturbances
 * **Soft-Iron & Hard-Iron Calibration:** Magnetometers mounted near electric stepper motors experience magnetic bias. A compulsory "Figure 8" rotation calibration procedure updates 3D offset matrices prior to aligning.
 * **Separation Distance:** Mount magnetometer sensors at least 15 cm away from high-current motor drivers and ferrous metal components (e.g. steel counterweight shafts).
-* **Dual-Sensor Fusion Option:** Combine 3-axis magnetometer reading with an optical gyro rate sensor ($d\theta/dt$) for dead-reckoning during rapid motor slews.
+* **Dual-Sensor Fusion Option:** Combine 3-axis magnetometer reading with an optical gyro rate sensor (`d_theta/dt`) for dead-reckoning during rapid motor slews.
 
 ---
 
@@ -261,11 +291,11 @@ For developers designing autonomous motorized mounts (stepper motor-driven Az/Al
 
 | Algorithm Module | Formula / Logic | Target Tolerance | Primary Purpose |
 | :--- | :--- | :--- | :--- |
-| **Geomagnetic Declination** | Empirical Trigonometric WMM | $\pm 0.1^\circ$ | Convert Magnetic Compass to True Geographical Heading |
-| **Azimuth Differential** | $\Delta Az = (B_{\text{target}} - H_{\text{true}}) \pmod{360}$ | $\le 1.5^\circ$ | Drive Left/Right Base Rotation |
-| **Elevation Differential** | $\Delta Alt = |\text{Pitch}| - |\phi|$ | $\le 1.0^\circ$ | Drive Up/Down Altitude Wedge |
-| **Adaptive EMA Filter** | $\alpha = f(|\Delta\theta|)$ | Dynamic ($0.06 \to 0.22$) | Smooth high-frequency noise without phase delay |
-| **Gravity Separation** | $\mathbf{a}_{\text{linear}} = \mathbf{a}_{\text{raw}} - \mathbf{g}_t$ | $< 0.05 \text{ m/s}^2$ | Monitor tripod/mount physical stability |
+| **Geomagnetic Declination** | Empirical Trigonometric WMM | `± 0.1°` | Convert Magnetic Compass to True Geographical Heading |
+| **Azimuth Differential** | `ΔAz = (B_target - H_true) mod 360` | `≤ 1.5°` | Drive Left/Right Base Rotation |
+| **Elevation Differential** | `ΔAlt = abs(Pitch) - abs(lat)` | `≤ 1.0°` | Drive Up/Down Altitude Wedge |
+| **Adaptive EMA Filter** | `α = f(abs(Δtheta))` | Dynamic (`0.06` to `0.22`) | Smooth high-frequency noise without phase delay |
+| **Gravity Separation** | `a_linear = a_raw - g[t]` | `< 0.05 m/s²` | Monitor tripod/mount physical stability |
 
 ---
 *Document produced for developers and engineers building autonomous astronomical positioning systems.*
