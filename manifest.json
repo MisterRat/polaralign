@@ -2,7 +2,7 @@
   "name": "Simple Polar Align",
   "short_name": "PolarAlign",
   "description": "Precision polar alignment star tracker tool for equatorial telescope mounts.",
-  "start_url": "index.html",
+  "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
