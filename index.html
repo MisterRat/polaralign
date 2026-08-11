@@ -355,19 +355,33 @@
         }, []);
 
         const handleInstallPwa = async () => {
-          if (deferredPrompt) {
-            try {
-              deferredPrompt.prompt();
-              const { outcome } = await deferredPrompt.userChoice;
-              if (outcome === 'accepted') {
-                setIsInstalled(true);
-              }
-              setDeferredPrompt(null);
-            } catch (err) {
-              console.warn('PWA install prompt error:', err);
+          // If embedded inside an iframe (like AI Studio preview frame), open in standalone tab first where Chrome allows install prompts
+          if (window.self !== window.top) {
+            console.log('Iframe preview detected. Opening top-level tab for Chrome PWA prompt.');
+            const newWin = window.open(window.location.href, '_blank');
+            if (!newWin) {
               setShowGuideModal(true);
             }
-          } else {
+            return;
+          }
+
+          if (deferredPrompt) {
+            try {
+              const promptEvent = deferredPrompt;
+              setDeferredPrompt(null);
+              promptEvent.prompt();
+              const choiceResult = await promptEvent.userChoice;
+              console.log('PWA install user choice outcome:', choiceResult);
+              if (choiceResult && choiceResult.outcome === 'accepted') {
+                setIsInstalled(true);
+              }
+            } catch (err) {
+              console.warn('PWA install prompt error:', err);
+              if (isIOS) {
+                setShowGuideModal(true);
+              }
+            }
+          } else if (isIOS) {
             setShowGuideModal(true);
           }
         };
@@ -973,7 +987,7 @@
               </div>
 
               <div className="flex items-center space-x-1.5">
-                {!isInstalled && (
+                {(deferredPrompt || (isIOS && !isInstalled)) && (
                   <button
                     onClick={handleInstallPwa}
                     className="px-2.5 py-1.5 rounded-xl text-xs font-bold bg-cyan-500 text-slate-950 hover:bg-cyan-400 transition-all cursor-pointer flex items-center gap-1 shadow-md animate-pulse"
