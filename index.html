@@ -10,15 +10,15 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Polar Align" />
     <meta name="application-name" content="Polar Align" />
-    <link rel="manifest" href="manifest.json" />
-    <link rel="icon" type="image/jpeg" href="pwa_app_icon.jpg" />
-    <link rel="apple-touch-icon" href="pwa_app_icon.jpg" />
+    <link rel="manifest" href="./manifest.json" />
+    <link rel="icon" type="image/jpeg" href="./pwa_app_icon.jpg" />
+    <link rel="apple-touch-icon" href="./pwa_app_icon.jpg" />
     <!-- Standalone Offline Vendor Scripts (Zero CDN Prerequisites) -->
-    <script src="vendor/tailwindcss.js"></script>
-    <script src="vendor/react.production.min.js"></script>
-    <script src="vendor/react-dom.production.min.js"></script>
-    <script src="vendor/babel.min.js"></script>
-    <script src="vendor/lucide.min.js"></script>
+    <script src="./vendor/tailwindcss.js"></script>
+    <script src="./vendor/react.production.min.js"></script>
+    <script src="./vendor/react-dom.production.min.js"></script>
+    <script src="./vendor/babel.min.js"></script>
+    <script src="./vendor/lucide.min.js"></script>
   </head>
   <body class="bg-slate-950 text-slate-100 antialiased selection:bg-cyan-500 selection:text-white min-h-screen">
     <div id="root"></div>
@@ -277,6 +277,83 @@
         const [isMonitoringActive, setIsMonitoringActive] = useState(false);
         const [currentAccValue, setCurrentAccValue] = useState(0);
         const [currentMss, setCurrentMss] = useState(0);
+
+        // Offline Cache & SW State
+        const [cacheStatus, setCacheStatus] = useState('working'); // 'working' | 'ready' | 'clearing' | 'cleared'
+        const [cacheMsg, setCacheMsg] = useState(null);
+
+        useEffect(() => {
+          if ('serviceWorker' in navigator) {
+            setCacheStatus('working');
+            navigator.serviceWorker.register('sw.js').then(
+              (reg) => {
+                console.log('PWA ServiceWorker registered:', reg.scope);
+                if (reg.active) {
+                  setCacheStatus('ready');
+                } else {
+                  const sw = reg.installing || reg.waiting;
+                  if (sw) {
+                    sw.addEventListener('statechange', (e) => {
+                      if (e.target.state === 'activated') {
+                        setCacheStatus('ready');
+                      }
+                    });
+                  }
+                  setTimeout(() => setCacheStatus('ready'), 800);
+                }
+              },
+              (err) => {
+                console.log('PWA ServiceWorker registration failed:', err);
+                setCacheStatus('ready');
+              }
+            );
+          } else {
+            setCacheStatus('ready');
+          }
+        }, []);
+
+        const clearOfflineCache = async () => {
+          setCacheStatus('clearing');
+          setCacheMsg('Clearing offline field cache...');
+          try {
+            if ('caches' in window) {
+              const keys = await caches.keys();
+              await Promise.all(keys.map(key => caches.delete(key)));
+            }
+            if ('serviceWorker' in navigator) {
+              const registrations = await navigator.serviceWorker.getRegistrations();
+              for (let reg of registrations) {
+                await reg.unregister();
+              }
+            }
+            setCacheStatus('cleared');
+            setCacheMsg('Cache cleared! Re-indexing field assets...');
+            setTimeout(() => {
+              if ('serviceWorker' in navigator) {
+                setCacheStatus('working');
+                navigator.serviceWorker.register('sw.js').then(
+                  () => {
+                    setTimeout(() => {
+                      setCacheStatus('ready');
+                      setCacheMsg(null);
+                    }, 600);
+                  },
+                  () => {
+                    setCacheStatus('ready');
+                    setCacheMsg(null);
+                  }
+                );
+              } else {
+                setCacheStatus('ready');
+                setCacheMsg(null);
+              }
+            }, 1000);
+          } catch (err) {
+            console.error('Failed to clear cache:', err);
+            setCacheStatus('ready');
+            setCacheMsg(null);
+          }
+        };
 
         // Sync location state to manual inputs so modal displays active GPS coordinates
         useEffect(() => {
@@ -878,14 +955,58 @@
                     </div>
                   </div>
 
-                  <div className="p-2 rounded-xl border bg-emerald-950/40 border-emerald-800 text-emerald-300 flex items-center gap-1.5">
-                    <Icon name="hard-drive" className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
-                    <div>
-                      <div className="font-bold text-[10px] leading-tight">Offline Cache</div>
-                      <div className="text-[9px] opacity-80 leading-tight">Field Ready ✓</div>
+                  <button
+                    type="button"
+                    onClick={clearOfflineCache}
+                    disabled={cacheStatus === 'clearing'}
+                    title="Click to clear offline cache and re-index field assets"
+                    className={`p-2 rounded-xl border flex items-center gap-1.5 transition-all text-left cursor-pointer group hover:scale-[1.02] active:scale-[0.98] ${
+                      cacheStatus === 'clearing'
+                        ? 'bg-amber-950/40 border-amber-800 text-amber-300'
+                        : cacheStatus === 'cleared'
+                        ? 'bg-cyan-950/40 border-cyan-800 text-cyan-300'
+                        : cacheStatus === 'working'
+                        ? 'bg-blue-950/40 border-blue-800 text-blue-300'
+                        : 'bg-emerald-950/40 border-emerald-800 text-emerald-300 hover:border-emerald-600'
+                    }`}
+                  >
+                    <Icon
+                      name={
+                        cacheStatus === 'clearing' || cacheStatus === 'working'
+                          ? 'rotate-cw'
+                          : cacheStatus === 'cleared'
+                          ? 'check-circle-2'
+                          : 'hard-drive'
+                      }
+                      className={`w-3.5 h-3.5 shrink-0 ${
+                        cacheStatus === 'clearing' || cacheStatus === 'working'
+                          ? 'animate-spin text-cyan-400'
+                          : 'text-emerald-400 group-hover:text-cyan-300'
+                      }`}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="font-bold text-[10px] leading-tight flex items-center justify-between gap-1">
+                        <span>Offline Cache</span>
+                        <span className="text-[8px] font-mono text-cyan-400 opacity-70 group-hover:opacity-100">Clear ✕</span>
+                      </div>
+                      <div className="text-[9px] opacity-80 leading-tight truncate">
+                        {cacheStatus === 'working'
+                          ? 'Working...'
+                          : cacheStatus === 'clearing'
+                          ? 'Clearing...'
+                          : cacheStatus === 'cleared'
+                          ? 'Cleared ✓'
+                          : 'Field Ready ✓'}
+                      </div>
                     </div>
-                  </div>
+                  </button>
                 </div>
+
+                {cacheMsg && (
+                  <div className="w-full p-2 bg-cyan-950/80 border border-cyan-800/80 rounded-xl text-center text-xs text-cyan-300 font-mono animate-pulse">
+                    {cacheMsg}
+                  </div>
+                )}
 
                 {(gpsErrorMsg || sensorErrorMsg) && (
                   <div className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-left text-xs text-slate-300 space-y-1">
@@ -1481,9 +1602,19 @@
                           <span>Tap Options <span className="text-cyan-300">⋮</span> → "Install App"</span>
                         </div>
                       </div>
-                      <p className="text-[10px] text-emerald-400 pt-1 font-mono">
-                        ✓ 100% Offline field ready — Service Worker caches core scripts on first load.
-                      </p>
+                      <div className="flex items-center justify-between pt-1 gap-2 flex-wrap">
+                        <p className="text-[10px] text-emerald-400 font-mono">
+                          ✓ 100% Offline field ready — Service Worker caches core scripts on first load.
+                        </p>
+                        <button
+                          onClick={clearOfflineCache}
+                          disabled={cacheStatus === 'clearing'}
+                          className="px-2.5 py-1 rounded-xl bg-slate-900 border border-slate-700 hover:border-cyan-500 text-cyan-300 hover:text-cyan-200 text-[10px] font-mono flex items-center gap-1 cursor-pointer transition-all shrink-0"
+                        >
+                          <Icon name="trash-2" className="w-3 h-3 text-cyan-400" />
+                          <span>{cacheStatus === 'clearing' ? 'Clearing...' : 'Clear Cache'}</span>
+                        </button>
+                      </div>
                     </div>
 
                   </div>
@@ -1513,16 +1644,6 @@
       }
 
       ReactDOM.createRoot(document.getElementById('root')).render(<App />);
-    </script>
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('sw.js').then(
-            (reg) => console.log('PWA ServiceWorker registered:', reg.scope),
-            (err) => console.log('PWA ServiceWorker registration failed:', err)
-          );
-        });
-      }
     </script>
   </body>
 </html>
