@@ -1,14 +1,15 @@
-const CACHE_NAME = 'polar-align-v1';
+const CACHE_NAME = 'polar-align-v1.0';
 const ASSETS_TO_CACHE = [
   './',
   'index.html',
   'manifest.json',
   'pwa_app_icon.jpg',
-  'https://cdn.tailwindcss.com',
-  'https://unpkg.com/react@18/umd/react.production.min.js',
-  'https://unpkg.com/react-dom@18/umd/react-dom.production.min.js',
-  'https://unpkg.com/@babel/standalone/babel.min.js',
-  'https://unpkg.com/lucide@latest'
+  'POLAR_ALIGNMENT_ALGORITHMS.md',
+  'vendor/tailwindcss.js',
+  'vendor/react.production.min.js',
+  'vendor/react-dom.production.min.js',
+  'vendor/babel.min.js',
+  'vendor/lucide.min.js'
 ];
 
 self.addEventListener('install', (event) => {

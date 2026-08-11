@@ -13,15 +13,12 @@
     <link rel="manifest" href="manifest.json" />
     <link rel="icon" type="image/jpeg" href="pwa_app_icon.jpg" />
     <link rel="apple-touch-icon" href="pwa_app_icon.jpg" />
-    <!-- Tailwind CSS CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- React & ReactDOM CDN -->
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <!-- Babel for in-browser JSX compilation -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- Lucide Icons -->
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Standalone Offline Vendor Scripts (Zero CDN Prerequisites) -->
+    <script src="vendor/tailwindcss.js"></script>
+    <script src="vendor/react.production.min.js"></script>
+    <script src="vendor/react-dom.production.min.js"></script>
+    <script src="vendor/babel.min.js"></script>
+    <script src="vendor/lucide.min.js"></script>
   </head>
   <body class="bg-slate-950 text-slate-100 antialiased selection:bg-cyan-500 selection:text-white min-h-screen">
     <div id="root"></div>
@@ -200,6 +197,15 @@
             return (
               <svg {...props}>
                 <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+              </svg>
+            );
+          case 'hard-drive':
+            return (
+              <svg {...props}>
+                <line x1="22" y1="12" x2="2" y2="12" />
+                <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+                <line x1="6" y1="16" x2="6.01" y2="16" />
+                <line x1="10" y1="16" x2="10.01" y2="16" />
               </svg>
             );
           default:
@@ -850,25 +856,33 @@
                   </span>
                 </button>
 
-                <div className="w-full grid grid-cols-2 gap-2 text-left text-xs pt-2 border-t border-slate-800">
-                  <div className={`p-2.5 rounded-xl border flex items-center gap-2 ${
+                <div className="w-full grid grid-cols-3 gap-1.5 text-left text-xs pt-2 border-t border-slate-800">
+                  <div className={`p-2 rounded-xl border flex items-center gap-1.5 ${
                     gpsStatus === 'granted' ? 'bg-emerald-950/40 border-emerald-800 text-emerald-300' :
                     gpsStatus === 'denied' ? 'bg-amber-950/40 border-amber-800 text-amber-300' : 'bg-slate-950 border-slate-800 text-slate-400'
                   }`}>
-                    <Icon name={gpsStatus === 'granted' ? 'check-circle-2' : 'map-pin'} className="w-4 h-4 shrink-0" />
+                    <Icon name={gpsStatus === 'granted' ? 'check-circle-2' : 'map-pin'} className="w-3.5 h-3.5 shrink-0" />
                     <div>
-                      <div className="font-bold text-[11px]">GPS Location</div>
-                      <div className="text-[10px] opacity-80">{gpsStatus === 'granted' ? 'Active ✓' : 'Awaiting prompt'}</div>
+                      <div className="font-bold text-[10px] leading-tight">GPS Location</div>
+                      <div className="text-[9px] opacity-80 leading-tight">{gpsStatus === 'granted' ? 'Active ✓' : 'Awaiting'}</div>
                     </div>
                   </div>
 
-                  <div className={`p-2.5 rounded-xl border flex items-center gap-2 ${
+                  <div className={`p-2 rounded-xl border flex items-center gap-1.5 ${
                     sensorStatus === 'granted' ? 'bg-emerald-950/40 border-emerald-800 text-emerald-300' : 'bg-slate-950 border-slate-800 text-slate-400'
                   }`}>
-                    <Icon name={sensorStatus === 'granted' ? 'check-circle-2' : 'compass'} className="w-4 h-4 shrink-0" />
+                    <Icon name={sensorStatus === 'granted' ? 'check-circle-2' : 'compass'} className="w-3.5 h-3.5 shrink-0" />
                     <div>
-                      <div className="font-bold text-[11px]">Compass & Tilt</div>
-                      <div className="text-[10px] opacity-80">{sensorStatus === 'granted' ? 'Active ✓' : 'Awaiting prompt'}</div>
+                      <div className="font-bold text-[10px] leading-tight">Compass/Tilt</div>
+                      <div className="text-[9px] opacity-80 leading-tight">{sensorStatus === 'granted' ? 'Active ✓' : 'Awaiting'}</div>
+                    </div>
+                  </div>
+
+                  <div className="p-2 rounded-xl border bg-emerald-950/40 border-emerald-800 text-emerald-300 flex items-center gap-1.5">
+                    <Icon name="hard-drive" className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
+                    <div>
+                      <div className="font-bold text-[10px] leading-tight">Offline Cache</div>
+                      <div className="text-[9px] opacity-80 leading-tight">Field Ready ✓</div>
                     </div>
                   </div>
                 </div>
@@ -1452,7 +1466,7 @@
                     <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-2">
                       <h4 className="font-bold text-white text-xs flex items-center gap-1.5">
                         <Icon name="sparkles" className="w-3.5 h-3.5 text-cyan-400" />
-                        Coming Soon - Offline Use
+                        PWA & Dark-Sky Field Offline Use
                       </h4>
                       <p className="text-[11px] text-slate-300">
                         Save Simple Polar Align to your phone's home screen for field use without cell coverage:
@@ -1468,7 +1482,7 @@
                         </div>
                       </div>
                       <p className="text-[10px] text-emerald-400 pt-1 font-mono">
-                        ✓ 100% Private local execution — Zero data ever leaves your phone.
+                        ✓ 100% Offline field ready — Service Worker caches core scripts on first load.
                       </p>
                     </div>
 
@@ -1482,7 +1496,7 @@
             <footer className="mt-3 text-center text-[11px] text-slate-500 space-y-1">
               <div>Simple Polar Align • Real-Time GPS & Orientation Sensors</div>
               <div>
-                ver. 0.9 ©️ by{' '}
+                ver. 1.0 ©️ by{' '}
                 <a
                   href="https://www.mrrat.com"
                   target="_blank"
