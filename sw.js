@@ -1,8 +1,10 @@
-const CACHE_NAME = 'polar-align-v1.3';
+const CACHE_NAME = 'polar-align-v1.4';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
   './manifest.json',
+  './icon-192.png',
+  './icon-512.png',
   './pwa_app_icon.jpg',
   './vendor/tailwindcss.js',
   './vendor/react.production.min.js',
