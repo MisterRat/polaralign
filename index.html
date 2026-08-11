@@ -13,12 +13,33 @@
     <link rel="manifest" href="./manifest.json" />
     <link rel="icon" type="image/jpeg" href="./pwa_app_icon.jpg" />
     <link rel="apple-touch-icon" href="./pwa_app_icon.jpg" />
-    <!-- Standalone Offline Vendor Scripts (Zero CDN Prerequisites) -->
+    <!-- Standalone Offline Vendor Scripts (with Automatic CDN Resiliency Fallbacks) -->
     <script src="./vendor/tailwindcss.js"></script>
     <script src="./vendor/react.production.min.js"></script>
+    <script>
+      if (typeof React === 'undefined') {
+        document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"><\/script>');
+      }
+    </script>
     <script src="./vendor/react-dom.production.min.js"></script>
+    <script>
+      if (typeof ReactDOM === 'undefined') {
+        document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"><\/script>');
+      }
+    </script>
     <script src="./vendor/babel.min.js"></script>
+    <script>
+      if (typeof Babel === 'undefined') {
+        console.warn('Local vendor/babel.min.js missing or corrupt. Activating CDN fallback...');
+        document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.26.4/babel.min.js"><\/script>');
+      }
+    </script>
     <script src="./vendor/lucide.min.js"></script>
+    <script>
+      if (typeof lucide === 'undefined') {
+        document.write('<script src="https://unpkg.com/lucide@latest"><\/script>');
+      }
+    </script>
   </head>
   <body class="bg-slate-950 text-slate-100 antialiased selection:bg-cyan-500 selection:text-white min-h-screen">
     <div id="root"></div>
