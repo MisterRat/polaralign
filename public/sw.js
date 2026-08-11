@@ -1,7 +1,6 @@
-const CACHE_NAME = 'polar-align-v1.0';
+const CACHE_NAME = 'polar-align-v1.2';
 const ASSETS_TO_CACHE = [
   './',
-  'index.html',
   'manifest.json',
   'pwa_app_icon.jpg',
   'vendor/tailwindcss.js',
@@ -60,10 +59,12 @@ self.addEventListener('fetch', (event) => {
           cache.put(event.request, responseToCache);
         });
         return networkResponse;
-      }).catch(() => {
+      }).catch(async () => {
         if (event.request.mode === 'navigate') {
-          return caches.match('index.html');
+          const fallback = await caches.match('./') || await caches.match('index.html');
+          if (fallback) return fallback;
         }
+        return new Response('Offline', { status: 503, statusText: 'Offline' });
       });
     })
   );
