@@ -355,12 +355,13 @@
         }, []);
 
         const handleInstallPwa = async () => {
-          // If embedded inside an iframe (like AI Studio preview frame), open in standalone tab first where Chrome allows install prompts
+          // If embedded inside an iframe (like AI Studio preview frame), break out to top-level URL directly
           if (window.self !== window.top) {
-            console.log('Iframe preview detected. Opening top-level tab for Chrome PWA prompt.');
-            const newWin = window.open(window.location.href, '_blank');
-            if (!newWin) {
-              setShowGuideModal(true);
+            console.log('Iframe preview detected. Navigating top window directly.');
+            try {
+              window.top.location.href = window.location.href;
+            } catch (e) {
+              window.open(window.location.href, '_blank');
             }
             return;
           }
@@ -368,18 +369,15 @@
           if (deferredPrompt) {
             try {
               const promptEvent = deferredPrompt;
-              setDeferredPrompt(null);
               promptEvent.prompt();
               const choiceResult = await promptEvent.userChoice;
               console.log('PWA install user choice outcome:', choiceResult);
               if (choiceResult && choiceResult.outcome === 'accepted') {
                 setIsInstalled(true);
+                setDeferredPrompt(null);
               }
             } catch (err) {
               console.warn('PWA install prompt error:', err);
-              if (isIOS) {
-                setShowGuideModal(true);
-              }
             }
           } else if (isIOS) {
             setShowGuideModal(true);
