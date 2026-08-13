@@ -628,7 +628,7 @@
             const radB = (rawPitch * Math.PI) / 180;
             const radG = (rawRoll * Math.PI) / 180;
             const cosGz = Math.abs(Math.cos(radB) * Math.cos(radG));
-            const rawPlaneTilt = Math.asin(Math.min(1, Math.max(-1, cosGz))) * (180 / Math.PI);
+            const rawPlaneTilt = Math.acos(Math.min(1, Math.max(-1, cosGz))) * (180 / Math.PI);
 
             const diffPT = rawPlaneTilt - smoothedPlaneTiltRef.current;
             const absDiffPT = Math.abs(diffPT);

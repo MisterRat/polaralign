@@ -145,7 +145,7 @@ Depending on the physical mounting orientation of the sensor enclosure relative 
    When the phone is attached parallel to the tracker mount or dovetail, single-axis Euler angles coupling causes pitch measurements to degrade when roll is present. To ensure pitch accuracy regardless of phone spin on the mount plate, the 3D surface normal vector component `gz` is calculated:
    ```text
    gz = |cos(Pitch) * cos(Roll)|
-   Plane_Tilt = asin(clamp(gz, -1, 1)) * (180 / π)
+   Plane_Tilt = acos(clamp(gz, -1, 1)) * (180 / π)
    Alt_measured = Plane_Tilt
    ```
 
@@ -295,7 +295,7 @@ For developers designing autonomous motorized mounts (stepper motor-driven Az/Al
 | :--- | :--- | :--- | :--- |
 | **NOAA WMM2025 Magnetic Declination** | Official NOAA $N=12$ Spherical Harmonics Matrix | `± 0.1°` | 100% offline exact conversion from Magnetic Compass to True Geographic Heading worldwide |
 | **Azimuth Differential** | `ΔAz = (B_target - H_true) mod 360` | `≤ 1.5°` | Drive Left/Right Base Rotation |
-| **Elevation Differential (3D Surface Plane Normal)** | `ΔAlt = asin(|cos β * cos γ|) - abs(lat)` | `≤ 1.0°` | Drive Up/Down Altitude Wedge invariant to phone rotation/roll |
+| **Elevation Differential (3D Surface Plane Normal)** | `ΔAlt = acos(|cos β * cos γ|) - abs(lat)` | `≤ 1.0°` | Drive Up/Down Altitude Wedge invariant to phone rotation/roll |
 | **Adaptive EMA Filter** | `α = f(abs(Δtheta))` | Dynamic (`0.06` to `0.22`) | Smooth high-frequency noise without phase delay |
 | **Gravity Separation** | `a_linear = a_raw - g[t]` | `< 0.05 m/s²` | Monitor tripod/mount physical stability |
 
