@@ -129,9 +129,9 @@ Alt_target = abs(lat)
 ```
 
 #### IMU Pitch Extraction & Mounting Geometry Mapping
-Depending on the physical mounting orientation of the sensor enclosure relative to the telescope mount, pitch (`β`) and roll (`γ`) angles are mapped using either direct 2D Euler pitch or 3D Surface Plane Normal Decomposition:
+Depending on the physical mounting orientation of the sensor enclosure relative to the telescope mount, pitch (`β`) and roll (`γ`) angles are mapped as follows:
 
-1. **Standard Perpendicular Mounting:**
+1. **Standard Perpendicular Mounting (Screen UP, Top pointing at Celestial Pole):**
    ```text
    Alt_measured = abs(Pitch)
    ```
@@ -141,25 +141,26 @@ Depending on the physical mounting orientation of the sensor enclosure relative 
    Alt_measured = abs(180° - Pitch)
    ```
 
-3. **Parallel & Viking Mode — 3D Surface Plane Normal Decomposition:**
-   When the phone is attached parallel to the tracker mount or dovetail, single-axis Euler angles coupling causes pitch measurements to degrade when roll is present. To ensure pitch accuracy regardless of phone spin on the mount plate, the 3D surface normal vector component `gz` is calculated:
+3. **Parallel Mounting (Normal Parallel & Viking Mode):**
+   When the phone is attached parallel to the tracker mount plate or dovetail, the phone's long axis sits orthogonal ($90^\circ$) to the polar axis:
    ```text
-   gz = |cos(Pitch) * cos(Roll)|
-   Plane_Tilt = acos(clamp(gz, -1, 1)) * (180 / π)
-   Alt_measured = Plane_Tilt
+   Alt_measured = |90° - Pitch|
    ```
 
 4. **Altitude Error Differential (`ΔAlt`):**
    ```text
+   Alt_target = abs(lat)
    ΔAlt = Alt_measured - Alt_target
    ```
 
 #### Actuator Directive Decision Table
-| Differential `ΔAlt` | Actuator Directive | Physical Meaning |
-| :--- | :--- | :--- |
-| `ΔAlt > 0` | **Lower Wedge Tilt ⬇** | Mount axis elevated too high above horizon |
-| `ΔAlt < 0` | **Raise Wedge Tilt ⬆** | Mount axis pointing too low relative to pole |
-| `abs(ΔAlt) <= 1.0°` | **ALTITUDE LOCKED ✓** | Altitude matched to target geographic latitude |
+| Mounting Mode | Differential `ΔAlt` | Actuator Directive | Physical Meaning |
+| :--- | :--- | :--- | :--- |
+| **Normal (Perp & Parallel)** | `ΔAlt > 0` | **Lower Wedge Tilt ⬇** | Mount axis elevated too high above horizon |
+| **Normal (Perp & Parallel)** | `ΔAlt < 0` | **Raise Wedge Tilt ⬆** | Mount axis pointing too low relative to pole |
+| **Viking Mode (Parallel)** | `ΔAlt > 0` | **Raise Wedge Tilt ⬆** | Polar wedge needs to be raised towards opposite pole target |
+| **Viking Mode (Parallel)** | `ΔAlt < 0` | **Lower Wedge Tilt ⬇** | Polar wedge needs to be lowered away from opposite pole target |
+| **All Modes** | `abs(ΔAlt) <= 1.0°` | **ALTITUDE LOCKED ✓** | Altitude matched to target geographic latitude |
 
 ---
 
@@ -295,7 +296,7 @@ For developers designing autonomous motorized mounts (stepper motor-driven Az/Al
 | :--- | :--- | :--- | :--- |
 | **NOAA WMM2025 Magnetic Declination** | Official NOAA $N=12$ Spherical Harmonics Matrix | `± 0.1°` | 100% offline exact conversion from Magnetic Compass to True Geographic Heading worldwide |
 | **Azimuth Differential** | `ΔAz = (B_target - H_true) mod 360` | `≤ 1.5°` | Drive Left/Right Base Rotation |
-| **Elevation Differential (3D Surface Plane Normal)** | `ΔAlt = acos(|cos β * cos γ|) - abs(lat)` | `≤ 1.0°` | Drive Up/Down Altitude Wedge invariant to phone rotation/roll |
+| **Elevation Differential** | `ΔAlt = (isParallel ? |90 - Pitch| : (Pitch > 90 ? |180 - Pitch| : Pitch)) - abs(lat)` | `≤ 1.0°` | Drive Up/Down Altitude Wedge across all mounting orientations |
 | **Adaptive EMA Filter** | `α = f(abs(Δtheta))` | Dynamic (`0.06` to `0.22`) | Smooth high-frequency noise without phase delay |
 | **Gravity Separation** | `a_linear = a_raw - g[t]` | `< 0.05 m/s²` | Monitor tripod/mount physical stability |
 

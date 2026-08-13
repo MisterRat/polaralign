@@ -840,9 +840,16 @@
         const targetAlt = Math.abs(currentLat);
         const rawPitch = manualSensorMode
           ? simPitch
-          : (isParallelMode ? sensorPlaneTilt : (sensorPitch > 90 ? Math.abs(180 - sensorPitch) : sensorPitch));
+          : (sensorPitch > 90 ? Math.abs(180 - sensorPitch) : sensorPitch);
 
-        const altError = rawPitch - targetAlt;
+        let measuredAlt = rawPitch;
+        if (!manualSensorMode && isParallelMode) {
+          // Parallel Mounting (Normal Parallel & Viking Mode): Phone long axis is orthogonal (90°) to polar axis.
+          // Raw pitch measures (90° - Latitude), so elevation is |90° - rawPitch|.
+          measuredAlt = Math.abs(90 - rawPitch);
+        }
+
+        const altError = measuredAlt - targetAlt;
         const absAltError = Math.abs(altError);
         const altLocked = absAltError <= 1.0;
 
@@ -1282,7 +1289,7 @@
                         <span className="text-emerald-400 flex items-center justify-center gap-1.5 text-xl sm:text-2xl">
                           <Icon name="check-circle-2" className="w-6 h-6" /> Altitude Matched to Target Latitude!
                         </span>
-                      ) : altError > 0 ? (
+                      ) : ((isParallelMode && useOppositePoleWhenParallel) ? (altError < 0) : (altError > 0)) ? (
                         <span className="text-cyan-400">Lower Wedge Tilt by <strong className="text-white">{absAltError.toFixed(1)}°</strong> ⬇</span>
                       ) : (
                         <span className="text-cyan-400">Raise Wedge Tilt by <strong className="text-white">{absAltError.toFixed(1)}°</strong> ⬆</span>
@@ -1292,13 +1299,13 @@
 
                   <div className="my-2">
                     <div className="flex justify-between text-xs font-mono mb-1">
-                      <span className="text-slate-400">Sensor Tilt: <strong className="text-cyan-400">{rawPitch.toFixed(1)}°</strong>{isParallelMode && <span className="text-[10px] text-indigo-400 font-sans ml-1">({useOppositePoleWhenParallel ? 'Viking Mode' : 'Parallel'})</span>}</span>
+                      <span className="text-slate-400">Sensor Tilt: <strong className="text-cyan-400">{measuredAlt.toFixed(1)}°</strong>{isParallelMode && <span className="text-[10px] text-indigo-400 font-sans ml-1">({useOppositePoleWhenParallel ? 'Viking Mode' : 'Parallel'})</span>}</span>
                       <span className="text-slate-400">Target Lat: <strong className="text-emerald-400">{targetAlt.toFixed(1)}°</strong></span>
                     </div>
                     <div className="w-full h-3 bg-slate-950 rounded-full p-0.5 border border-slate-800">
                       <div 
                         className={`h-full rounded-full transition-colors duration-300 ${altLocked ? 'bg-emerald-500' : 'bg-gradient-to-r from-cyan-500 to-indigo-500'}`}
-                        style={{ width: `${Math.min(100, (rawPitch / 90) * 100)}%` }}
+                        style={{ width: `${Math.min(100, (measuredAlt / 90) * 100)}%` }}
                       ></div>
                     </div>
                   </div>
