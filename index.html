@@ -1,4 +1,4 @@
-<!doctype html>
+<!doctype html> 
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -58,6 +58,10 @@
         if (lat >= 35 && lat <= 70 && lon >= -10 && lon <= 40) {
           const euApprox = 3.0 + 0.08 * (lon - 10) - 0.05 * (lat - 50);
           return Math.round(euApprox * 10) / 10;
+        }
+        if (lat >= -45 && lat <= -10 && lon >= 110 && lon <= 155) {
+          const auApprox = -2.5 + (lon - 115) * 0.42 - 0.15 * (lat + 30);
+          return Math.round(auApprox * 10) / 10;
         }
         return Math.round(dec * 10) / 10;
       }
@@ -246,7 +250,7 @@
         const [sensorStatus, setSensorStatus] = useState('pending');
         const [sensorErrorMsg, setSensorErrorMsg] = useState(null);
         const [sensorActive, setSensorActive] = useState(false);
-        const [orientation, setOrientation] = useState({ heading: null, pitch: 0, roll: 0 });
+        const [orientation, setOrientation] = useState({ heading: null, pitch: 0, roll: 0, planeTilt: 0 });
 
         // Manual Gyro / Simulation Mode State (for testing & desktop)
         const [manualSensorMode, setManualSensorMode] = useState(false);
@@ -257,6 +261,7 @@
         const smoothedHeadingRef = useRef(null);
         const smoothedPitchRef = useRef(0);
         const smoothedRollRef = useRef(0);
+        const smoothedPlaneTiltRef = useRef(0);
 
         // Calibration wizard state
         const [showCalibrationModal, setShowCalibrationModal] = useState(false);
@@ -531,11 +536,24 @@
             const curR = smoothedRollRef.current + diffR * alphaR;
             smoothedRollRef.current = curR;
 
+            // Calculate 3D surface plane tilt from horizontal ground
+            const radB = (rawPitch * Math.PI) / 180;
+            const radG = (rawRoll * Math.PI) / 180;
+            const cosGz = Math.abs(Math.cos(radB) * Math.cos(radG));
+            const rawPlaneTilt = Math.acos(Math.min(1, Math.max(-1, cosGz))) * (180 / Math.PI);
+
+            const diffPT = rawPlaneTilt - smoothedPlaneTiltRef.current;
+            const absDiffPT = Math.abs(diffPT);
+            const alphaPT = absDiffPT < 0.5 ? 0.06 : (absDiffPT > 4.0 ? 0.22 : 0.06 + (absDiffPT - 0.5) * 0.045);
+            const curPT = smoothedPlaneTiltRef.current + diffPT * alphaPT;
+            smoothedPlaneTiltRef.current = curPT;
+
             setSensorActive(true);
             setOrientation({
               heading: smoothedHeadingRef.current,
               pitch: curP,
-              roll: curR
+              roll: curR,
+              planeTilt: curPT
             });
           };
 
@@ -707,7 +725,13 @@
         const isSouthern = currentLat < 0;
 
         const sensorPitch = orientation.pitch !== null ? Math.abs(orientation.pitch) : 0;
-        const isParallelMode = !manualSensorMode && (useOppositePoleWhenParallel || sensorPitch > 90);
+        const sensorPlaneTilt = (orientation.planeTilt !== undefined && orientation.planeTilt !== null) ? orientation.planeTilt : sensorPitch;
+
+        const isParallelMode = !manualSensorMode && (
+          useOppositePoleWhenParallel || 
+          sensorPitch > 90 || 
+          (sensorPitch < 45 && orientation.roll !== null && Math.abs(orientation.roll) > 15)
+        );
 
         const flipToOpposite = useOppositePoleWhenParallel;
         const effectiveSouthern = flipToOpposite ? !isSouthern : isSouthern;
@@ -728,7 +752,7 @@
         const targetAlt = Math.abs(currentLat);
         const rawPitch = manualSensorMode
           ? simPitch
-          : (sensorPitch > 90 ? Math.abs(180 - sensorPitch) : sensorPitch);
+          : (isParallelMode ? sensorPlaneTilt : (sensorPitch > 90 ? Math.abs(180 - sensorPitch) : sensorPitch));
 
         const altError = rawPitch - targetAlt;
         const absAltError = Math.abs(altError);
@@ -1600,8 +1624,54 @@
                         How Sensor-Based Alignment Works
                       </h4>
                       <p className="text-[11px] text-slate-300">
-                        This app aligns your tracker mount using your phone's internal sensors. It reads your GPS position, calculates the local <strong class="text-cyan-300">Magnetic Declination</strong> (the difference between magnetic north and true celestial north/south), and uses your phone's compass and pitch sensors to guide alignment in two physical axes.
+                        This app aligns your tracker mount using your phone's internal sensors. It reads your GPS position, calculates the local <strong className="text-cyan-300">Magnetic Declination</strong> (the difference between magnetic north and true celestial north/south), and uses your phone's compass and pitch sensors to guide alignment in two physical axes.
                       </p>
+                    </div>
+
+                    {/* Use Modes Section */}
+                    <div className="space-y-3">
+                      <h4 className="font-bold text-white text-xs uppercase tracking-wider text-slate-400 border-b border-slate-800 pb-1">
+                        Use Modes
+                      </h4>
+
+                      {/* Mode 1 */}
+                      <div className="space-y-1 bg-slate-950/60 p-3 rounded-2xl border border-slate-800">
+                        <div className="font-bold text-cyan-300 flex items-center justify-between text-xs">
+                          <span>1. Normal Mode — Perpendicular</span>
+                          <span className="text-[10px] px-2 py-0.5 rounded-md bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-mono">Perpendicular</span>
+                        </div>
+                        <ul className="text-[11px] text-slate-300 space-y-0.5 pl-2 pt-1 font-sans">
+                          <li><strong className="text-slate-400">Facing:</strong> Hemisphere Pole</li>
+                          <li><strong className="text-slate-400">Phone Mount Setup:</strong> phone held 90 degrees to the tracker</li>
+                          <li><strong className="text-slate-400">Phone Position:</strong> Screen facing up with the top pointing at the pole.</li>
+                        </ul>
+                      </div>
+
+                      {/* Mode 2 */}
+                      <div className="space-y-1 bg-slate-950/60 p-3 rounded-2xl border border-slate-800">
+                        <div className="font-bold text-indigo-300 flex items-center justify-between text-xs">
+                          <span>2. Normal Mode — Parallel</span>
+                          <span className="text-[10px] px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-mono">Parallel</span>
+                        </div>
+                        <ul className="text-[11px] text-slate-300 space-y-0.5 pl-2 pt-1 font-sans">
+                          <li><strong className="text-slate-400">Facing:</strong> Hemisphere Pole</li>
+                          <li><strong className="text-slate-400">Phone Mount Setup:</strong> phone held next to or behind the tracker</li>
+                          <li><strong className="text-slate-400">Phone Position:</strong> Screen facing DOWN with the back middle pointing at the pole.</li>
+                        </ul>
+                      </div>
+
+                      {/* Mode 3 */}
+                      <div className="space-y-1 bg-slate-950/60 p-3 rounded-2xl border border-slate-800">
+                        <div className="font-bold text-amber-300 flex items-center justify-between text-xs">
+                          <span>3. Viking Mode — Parallel</span>
+                          <span className="text-[10px] px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/20 font-mono">Viking Mode</span>
+                        </div>
+                        <ul className="text-[11px] text-slate-300 space-y-0.5 pl-2 pt-1 font-sans">
+                          <li><strong className="text-slate-400">Facing:</strong> Opposite Direction of your Pole</li>
+                          <li><strong className="text-slate-400">Phone Mount Setup:</strong> phone held next to or behind the tracker</li>
+                          <li><strong className="text-slate-400">Phone Position:</strong> Screen facing UP with the back middle pointing at the opposite pole.</li>
+                        </ul>
+                      </div>
                     </div>
 
                     {/* Step-by-Step Alignment Process */}
