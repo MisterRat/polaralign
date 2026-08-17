@@ -332,8 +332,9 @@
         // GPS State
         const [location, setLocation] = useState(null);
         const [gpsStatus, setGpsStatus] = useState('pending'); // 'pending' | 'requesting' | 'granted' | 'failed' | 'timeout'
+        const [gpsAccuracyMode, setGpsAccuracyMode] = useState('precise'); // 'precise' | 'approximate'
         const [gpsErrorMsg, setGpsErrorMsg] = useState(null);
-        const [gpsCountdown, setGpsCountdown] = useState(45);
+        const [gpsCountdown, setGpsCountdown] = useState(30);
         const [showManualEntryForm, setShowManualEntryForm] = useState(false);
         const gpsTimerRef = useRef(null);
 
@@ -693,29 +694,36 @@
           };
         }, []);
 
-        const startGpsLock = () => {
+        const startGpsLock = (forceApproximate = false) => {
           if (gpsTimerRef.current) {
             clearInterval(gpsTimerRef.current);
             gpsTimerRef.current = null;
           }
+          const isApprox = forceApproximate;
+          setGpsAccuracyMode(isApprox ? 'approximate' : 'precise');
           setGpsStatus('requesting');
-          setGpsCountdown(45);
+          setGpsCountdown(30);
           setGpsErrorMsg(null);
           setLocation(null);
 
           const startTime = Date.now();
           gpsTimerRef.current = setInterval(() => {
             const elapsedSec = Math.floor((Date.now() - startTime) / 1000);
-            const remaining = Math.max(0, 45 - elapsedSec);
+            const remaining = Math.max(0, 30 - elapsedSec);
             setGpsCountdown(remaining);
             if (remaining <= 0) {
               if (gpsTimerRef.current) {
                 clearInterval(gpsTimerRef.current);
                 gpsTimerRef.current = null;
               }
-              setGpsStatus('timeout');
-              setGpsErrorMsg('GPS satellite fix timed out after 45 seconds. No GPS coordinates received from device.');
-              setShowManualEntryForm(true);
+              if (!isApprox) {
+                // If precise 30s times out without explicit code 2, try approximate for 30s
+                startGpsLock(true);
+              } else {
+                setGpsStatus('timeout');
+                setGpsErrorMsg('GPS location timed out after trying Precise (30s) and Approximate (30s) modes. No coordinates received from device.');
+                setShowManualEntryForm(true);
+              }
             }
           }, 500);
 
@@ -735,7 +743,7 @@
                   declination: dec,
                   accuracy: pos.coords.accuracy,
                   timestamp: pos.timestamp,
-                  source: 'gps'
+                  source: isApprox ? 'approximate-gps' : 'gps'
                 });
                 setManualLatInput(lat.toFixed(4));
                 setManualLonInput(lon.toFixed(4));
@@ -744,23 +752,33 @@
                 setShowManualEntryForm(false);
               },
               (err) => {
+                // If in Precise mode and we receive code 2 (POSITION_UNAVAILABLE) or code 3 (TIMEOUT), immediately switch to Approximate mode for 30 seconds
+                if (!isApprox && (err.code === 2 || err.code === 3)) {
+                  if (gpsTimerRef.current) {
+                    clearInterval(gpsTimerRef.current);
+                    gpsTimerRef.current = null;
+                  }
+                  startGpsLock(true);
+                  return;
+                }
+
                 if (gpsTimerRef.current) {
                   clearInterval(gpsTimerRef.current);
                   gpsTimerRef.current = null;
                 }
-                let msg = 'GPS satellite lock failed.';
+                let msg = 'GPS location lock failed.';
                 if (err.code === 1) {
-                  msg = 'GPS location permission was denied by device/browser.';
+                  msg = 'Location permission was denied by device/browser settings.';
                 } else if (err.code === 2) {
-                  msg = 'GPS satellite position unavailable (weak satellite signal).';
+                  msg = 'GPS satellite position unavailable on device.';
                 } else if (err.code === 3) {
-                  msg = 'GPS satellite lock timed out (no lock in 45s).';
+                  msg = 'GPS satellite lock timed out.';
                 }
                 setGpsStatus('failed');
                 setGpsErrorMsg(msg);
                 setShowManualEntryForm(true);
               },
-              { enableHighAccuracy: true, timeout: 45000, maximumAge: 0 }
+              { enableHighAccuracy: !isApprox, timeout: 30000, maximumAge: 0 }
             );
           } else {
             if (gpsTimerRef.current) {
@@ -1144,7 +1162,9 @@
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
                         <Icon name="rotate-cw" className="w-3.5 h-3.5 animate-spin text-cyan-400" />
-                        Acquiring GPS Satellite Lock...
+                        <span>
+                          {gpsAccuracyMode === 'precise' ? 'Acquiring Precise Satellite GPS...' : 'Acquiring Device Approximate Location...'}
+                        </span>
                       </span>
                       <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-md bg-cyan-950 text-cyan-300 border border-cyan-800">
                         {gpsCountdown}s remaining
@@ -1155,12 +1175,14 @@
                     <div className="w-full h-2 bg-slate-900 rounded-full overflow-hidden border border-slate-800">
                       <div 
                         className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all duration-500 rounded-full"
-                        style={{ width: `${Math.max(2, (gpsCountdown / 45) * 100)}%` }}
+                        style={{ width: `${Math.max(2, (gpsCountdown / 30) * 100)}%` }}
                       ></div>
                     </div>
 
                     <p className="text-[11px] text-slate-400">
-                      Waiting for device GPS satellite fix with high precision. If satellites are obscured, you can input coordinates manually below.
+                      {gpsAccuracyMode === 'precise'
+                        ? 'Attempting high-precision GNSS satellite lock (30s). If satellite signal is unavailable, will switch to Approximate location.'
+                        : 'Switching to approximate/network location (30s) to acquire observing coordinates.'}
                     </p>
 
                     <button
@@ -1189,7 +1211,7 @@
                       className="w-full py-3.5 px-6 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-sm cursor-pointer"
                     >
                       <Icon name="shield-check" className="w-5 h-5" />
-                      <span>Acquire GPS & Sensor Access (45s)</span>
+                      <span>Acquire GPS & Sensor Access</span>
                     </button>
 
                     <button
@@ -1211,7 +1233,7 @@
                         <span className="text-xs font-bold text-white">Manual Observing Coordinates</span>
                       </div>
                       <span className="text-[10px] text-amber-400 font-mono font-bold bg-amber-950/60 px-2 py-0.5 rounded border border-amber-800/60">
-                        {gpsStatus === 'timeout' ? 'GPS TIMED OUT (45s)' : 'MANUAL INPUT'}
+                        {gpsStatus === 'timeout' ? 'GPS TIMED OUT' : 'MANUAL INPUT'}
                       </span>
                     </div>
 
@@ -1276,7 +1298,7 @@
                           className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center justify-center gap-1.5"
                         >
                           <Icon name="rotate-cw" className="w-3.5 h-3.5" />
-                          <span>Try GPS Again (45s)</span>
+                          <span>Try GPS Again</span>
                         </button>
                       </div>
                     </form>
@@ -1304,8 +1326,8 @@
                       <div className="font-bold text-[10px] leading-tight">GPS Status</div>
                       <div className="text-[9px] opacity-80 leading-tight truncate">
                         {gpsStatus === 'granted' ? 'Locked ✓' :
-                         gpsStatus === 'requesting' ? `Locking (${gpsCountdown}s)` :
-                         gpsStatus === 'timeout' ? 'Timeout (45s)' :
+                         gpsStatus === 'requesting' ? `${gpsAccuracyMode === 'precise' ? 'Precise' : 'Approx'} (${gpsCountdown}s)` :
+                         gpsStatus === 'timeout' ? 'Timed Out' :
                          gpsStatus === 'failed' ? 'Unavailable' : 'Awaiting'}
                       </div>
                     </div>
