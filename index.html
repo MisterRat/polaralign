@@ -413,6 +413,25 @@
         const [currentAccValue, setCurrentAccValue] = useState(0);
         const [currentMss, setCurrentMss] = useState(0);
 
+        // App version loaded dynamically from package.json
+        const [appVersion, setAppVersion] = useState(() => {
+          if (typeof __APP_VERSION__ !== 'undefined') {
+            return __APP_VERSION__;
+          }
+          return '';
+        });
+
+        useEffect(() => {
+          fetch('./package.json')
+            .then(res => res.json())
+            .then(pkg => {
+              if (pkg && pkg.version) {
+                setAppVersion(pkg.version);
+              }
+            })
+            .catch(() => {});
+        }, []);
+
         // Offline Cache & SW State
         const [cacheStatus, setCacheStatus] = useState('working'); // 'working' | 'ready' | 'clearing' | 'cleared'
         const [cacheMsg, setCacheMsg] = useState(null);
@@ -2097,7 +2116,7 @@
             <footer className="mt-3 text-center text-[11px] text-slate-500 space-y-1">
               <div>Simple Polar Align • Real-Time GPS & Orientation Sensors</div>
               <div>
-                ver. 1.0 ©️ by{' '}
+                {appVersion ? `ver. ${appVersion} ` : ''}©️ by{' '}
                 <a
                   href="https://www.mrrat.com"
                   target="_blank"
