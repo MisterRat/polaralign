@@ -333,7 +333,7 @@
         const [location, setLocation] = useState(null);
         const [gpsStatus, setGpsStatus] = useState('pending'); // 'pending' | 'requesting' | 'granted' | 'failed' | 'timeout'
         const [gpsErrorMsg, setGpsErrorMsg] = useState(null);
-        const [gpsCountdown, setGpsCountdown] = useState(30);
+        const [gpsCountdown, setGpsCountdown] = useState(45);
         const [showManualEntryForm, setShowManualEntryForm] = useState(false);
         const gpsTimerRef = useRef(null);
 
@@ -699,14 +699,14 @@
             gpsTimerRef.current = null;
           }
           setGpsStatus('requesting');
-          setGpsCountdown(30);
+          setGpsCountdown(45);
           setGpsErrorMsg(null);
           setLocation(null);
 
           const startTime = Date.now();
           gpsTimerRef.current = setInterval(() => {
             const elapsedSec = Math.floor((Date.now() - startTime) / 1000);
-            const remaining = Math.max(0, 30 - elapsedSec);
+            const remaining = Math.max(0, 45 - elapsedSec);
             setGpsCountdown(remaining);
             if (remaining <= 0) {
               if (gpsTimerRef.current) {
@@ -714,7 +714,7 @@
                 gpsTimerRef.current = null;
               }
               setGpsStatus('timeout');
-              setGpsErrorMsg('GPS satellite fix timed out after 30 seconds. No GPS coordinates received from device.');
+              setGpsErrorMsg('GPS satellite fix timed out after 45 seconds. No GPS coordinates received from device.');
               setShowManualEntryForm(true);
             }
           }, 500);
@@ -754,13 +754,13 @@
                 } else if (err.code === 2) {
                   msg = 'GPS satellite position unavailable (weak satellite signal).';
                 } else if (err.code === 3) {
-                  msg = 'GPS satellite lock timed out (no lock in 30s).';
+                  msg = 'GPS satellite lock timed out (no lock in 45s).';
                 }
                 setGpsStatus('failed');
                 setGpsErrorMsg(msg);
                 setShowManualEntryForm(true);
               },
-              { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 }
+              { enableHighAccuracy: true, timeout: 45000, maximumAge: 0 }
             );
           } else {
             if (gpsTimerRef.current) {
@@ -1155,7 +1155,7 @@
                     <div className="w-full h-2 bg-slate-900 rounded-full overflow-hidden border border-slate-800">
                       <div 
                         className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all duration-500 rounded-full"
-                        style={{ width: `${Math.max(2, (gpsCountdown / 30) * 100)}%` }}
+                        style={{ width: `${Math.max(2, (gpsCountdown / 45) * 100)}%` }}
                       ></div>
                     </div>
 
@@ -1189,7 +1189,7 @@
                       className="w-full py-3.5 px-6 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-sm cursor-pointer"
                     >
                       <Icon name="shield-check" className="w-5 h-5" />
-                      <span>Acquire GPS & Sensor Access (30s)</span>
+                      <span>Acquire GPS & Sensor Access (45s)</span>
                     </button>
 
                     <button
@@ -1211,7 +1211,7 @@
                         <span className="text-xs font-bold text-white">Manual Observing Coordinates</span>
                       </div>
                       <span className="text-[10px] text-amber-400 font-mono font-bold bg-amber-950/60 px-2 py-0.5 rounded border border-amber-800/60">
-                        {gpsStatus === 'timeout' ? 'GPS TIMED OUT (30s)' : 'MANUAL INPUT'}
+                        {gpsStatus === 'timeout' ? 'GPS TIMED OUT (45s)' : 'MANUAL INPUT'}
                       </span>
                     </div>
 
@@ -1276,7 +1276,7 @@
                           className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center justify-center gap-1.5"
                         >
                           <Icon name="rotate-cw" className="w-3.5 h-3.5" />
-                          <span>Try GPS Again (30s)</span>
+                          <span>Try GPS Again (45s)</span>
                         </button>
                       </div>
                     </form>
@@ -1305,7 +1305,7 @@
                       <div className="text-[9px] opacity-80 leading-tight truncate">
                         {gpsStatus === 'granted' ? 'Locked ✓' :
                          gpsStatus === 'requesting' ? `Locking (${gpsCountdown}s)` :
-                         gpsStatus === 'timeout' ? 'Timeout (30s)' :
+                         gpsStatus === 'timeout' ? 'Timeout (45s)' :
                          gpsStatus === 'failed' ? 'Unavailable' : 'Awaiting'}
                       </div>
                     </div>
