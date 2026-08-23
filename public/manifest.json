@@ -1,9 +1,9 @@
 {
-  "id": "./index.html",
+  "id": "/",
   "name": "Simple Polar Align",
   "short_name": "PolarAlign",
   "description": "Precision polar alignment star tracker tool for equatorial telescope mounts.",
-  "start_url": "./index.html",
+  "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
@@ -15,6 +15,12 @@
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
+    },
+    {
+      "src": "./icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
     },
     {
       "src": "./icon-512.png",
