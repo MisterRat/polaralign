@@ -9,8 +9,7 @@ const ASSETS_TO_CACHE = [
   './vendor/tailwindcss.js',
   './vendor/react.production.min.js',
   './vendor/react-dom.production.min.js',
-  './vendor/babel.min.js',
-  './vendor/lucide.min.js'
+  './vendor/babel.min.js'
 ];
 
 self.addEventListener('install', (event) => {
