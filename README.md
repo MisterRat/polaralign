@@ -7,7 +7,7 @@
 
 ## 1. Executive Summary
 
-Polar alignment is the process of aligning an equatorial mount or star tracker's axis of rotation parallel to Earth's rotational axis (pointing directly at the True Celestial Pole: **Polaris** in the Northern Hemisphere, **Sigma Octantis** in the Southern Hemisphere).
+Polar alignment is the process of aligning an equatorial mount or star tracker's axis of rotation parallel to Earth's rotational axis (pointing directly at the True Celestial Pole: which is close to **Polaris** in the Northern Hemisphere, **Sigma Octantis** in the Southern Hemisphere).
 
 Traditional optical polar alignment relies on polar finderscopes or camera-based plate solving (e.g., SharpCap, ASIAIR). However, autonomous or sensor-assisted systems rely on **MEMS accelerometers, 3-axis magnetometers (electronic compasses), and GPS/GNSS receivers** to achieve rapid alignment without optical line-of-sight to the stars.
 
