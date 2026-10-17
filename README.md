@@ -5,6 +5,28 @@
 
 ---
 
+## Using the app
+
+1. Open the app on your phone in Chrome (Android) or Safari (iOS) and tap **Acquire GPS & Sensor Access**. Allow location and motion access. If GPS is unavailable you can type your latitude and longitude instead.
+2. Mount the phone on the tracker or mount so its top edge points along the polar axis (screen up), or flat on the mount plate for parallel mode.
+3. Tap **Calibrate** and follow the figure-8 motion until the bar fills. Keep the phone away from metal, magnets and motors while you do it.
+4. Turn the mount base until **Azimuth Alignment** shows LOCKED, then adjust the wedge until **Elevation** shows LOCKED.
+5. Optionally start the **Mount Stability Monitor** to check that vibration has settled before imaging.
+
+If the azimuth card says **No compass signal**, the browser is not providing a north-referenced compass heading and no azimuth guidance is shown. If it warns that compass accuracy is too coarse (iOS reports this), recalibrate away from interference.
+
+## Development
+
+The app source lives in `src/` and is compiled to `app.js` with esbuild. The site is served straight from the repository root (GitHub Pages), so commit the rebuilt `app.js` with every change.
+
+```bash
+npm install
+npm run build   # compile src/ -> app.js
+npm test        # NOAA WMM2025 test values, filter and version checks
+```
+
+When releasing, bump the version in `package.json`, `sw.js` (`APP_VERSION`) and the `app.js?v=` query in `index.html`; `npm test` fails if they disagree.
+
 ## 1. Executive Summary
 
 Polar alignment is the process of aligning an equatorial mount or star tracker's axis of rotation parallel to Earth's rotational axis (pointing directly at the True Celestial Pole: which is close to **Polaris** in the Northern Hemisphere, **Sigma Octantis** in the Southern Hemisphere).
@@ -53,7 +75,9 @@ This document details the complete mathematical and algorithmic pipeline utilize
 Magnetic compasses measure **Magnetic North**, which deviates from **True North** by the **Magnetic Declination (`δ`)**. Declination varies dynamically based on geographic coordinates (`lat`, `lon`) and altitude.
 
 #### Mathematical Model
-Simple polar alignment apps frequently suffer from inaccuracies or require internet connections to look up magnetic declination. To ensure **100% offline field reliability with sub-degree precision ($\pm 0.1^\circ$) anywhere on Earth**, this app embeds the official **NOAA World Magnetic Model (WMM2025 Epoch 2025-2030)** Gauss coefficient matrix ($N=12$ degree spherical harmonics).
+Simple polar alignment apps frequently suffer from inaccuracies or require internet connections to look up magnetic declination. To work fully offline, this app embeds the official **NOAA/BGS World Magnetic Model WMM2025** (epoch 2025.0, valid until 2030.0): all 90 Gauss coefficients to degree $N=12$ plus their secular-variation (yearly change) terms, evaluated for the current date and the GPS altitude.
+
+The implementation reproduces NOAA's published WMM2025 test values to within 0.01° (`tests/wmm.test.mjs`). The model itself has a typical uncertainty of a few tenths of a degree, larger near the magnetic poles and over local magnetic anomalies. After 1 January 2030 the app warns that the model has expired.
 
 1. **Geodetic to Spherical Colatitude Conversion:**
    ```text
@@ -79,16 +103,15 @@ Simple polar alignment apps frequently suffer from inaccuracies or require inter
 
 #### TypeScript / JavaScript Implementation
 ```javascript
-// Embedded 90-element Gauss coefficient matrix [n, m, g_nm, h_nm]
+// src/wmm.js — 90 rows [n, m, g_nm, h_nm, gdot_nm, hdot_nm] copied from WMM2025.COF
 const WMM2025_COEFFS = [
-  [1,0,-29404.5,0],[1,1,-1450.7,4652.9],
-  [2,0,-2500.0,0],[2,1,2982.0,-2991.6],[2,2,1676.8,-734.8],
-  // ... Degree N=12 WMM2025 spherical harmonic matrix
+  [1,0,-29351.8,0.0,12.0,0.0],[1,1,-1410.8,4545.4,9.7,-21.5],
+  // ... through degree 12
 ];
 
-function calculateMagneticDeclination(lat, lon, altKm = 0) {
-  // Evaluates WMM2025 spherical expansion offline in <1 ms
-  // Returns exact magnetic declination in degrees (-180° to +180°)
+// g(t) = g + (t - 2025.0) * gdot, evaluated at reference radius a = 6371.2 km
+function calculateMagneticDeclination(lat, lon, altKm = 0, date = new Date()) {
+  // Returns magnetic declination in degrees, positive East of True North
 }
 ```
 
@@ -166,7 +189,7 @@ Depending on the physical mounting orientation of the sensor enclosure relative 
 
 ### 3.4. Adaptive Low-Pass Noise Filtering (Dynamic Alpha EMA)
 
-Raw MEMS sensor streams suffer from high-frequency electromagnetic noise, thermal drift, and human touch jitter. A standard Exponential Moving Average (EMA) causes lag when moving rapidly, but insufficient smoothing when static.
+Raw MEMS sensor streams suffer from high-frequency electromagnetic noise, thermal drift, and human touch jitter. One filter implementation (`src/math.js`) is used for every channel, with a slightly wider window for the compass heading. A standard Exponential Moving Average (EMA) causes lag when moving rapidly, but insufficient smoothing when static.
 
 To resolve this, an **Adaptive Dynamic Alpha EMA Filter** adjusts the coefficient `α` dynamically based on instantaneous angular velocity:
 
@@ -179,22 +202,26 @@ Where Δtheta = (theta_raw[t] - theta_smoothed[t-1]) mod 360
 #### Dynamic Alpha Mapping Function:
 ```text
 α(Δtheta) =
-  0.06                            if abs(Δtheta) < 0.5°  (High damping while stationary)
-  0.22                            if abs(Δtheta) > 4.0°  (Fast response during rapid motor slew)
-  0.06 + (abs(Δtheta) - 0.5) * 0.045  otherwise          (Smooth linear interpolation)
+  0.06                                     if abs(Δtheta) <= still   (High damping while stationary)
+  0.22                                     if abs(Δtheta) >= moving  (Fast response during rapid motion)
+  linear interpolation from 0.06 to 0.22   otherwise
+
+Heading:     still = 1.0°, moving = 6.0°
+Pitch/Roll:  still = 0.5°, moving = 4.0°
 ```
 
-```typescript
-function adaptiveLowPassFilter(raw: number, currentSmoothed: number): number {
-  let diff = (raw - currentSmoothed) % 360;
-  if (diff > 180) diff -= 360;
-  if (diff < -180) diff += 360;
-  
-  const absDiff = Math.abs(diff);
-  // Dynamic alpha computation
-  const alpha = absDiff < 0.5 ? 0.06 : (absDiff > 4.0 ? 0.22 : 0.06 + (absDiff - 0.5) * 0.045);
-  
-  return (currentSmoothed + diff * alpha + 360) % 360;
+```javascript
+// src/math.js
+export function adaptiveAlpha(absDiff, { still, moving, alphaMin, alphaMax }) {
+  if (absDiff <= still) return alphaMin;
+  if (absDiff >= moving) return alphaMax;
+  return alphaMin + ((absDiff - still) / (moving - still)) * (alphaMax - alphaMin);
+}
+
+export function smoothAngle(previous, raw, profile = HEADING_FILTER) {
+  if (previous === null) return normalizeAngle(raw);
+  const diff = getHeadingDifference(previous, raw); // shortest path through 0/360
+  return normalizeAngle(previous + diff * adaptiveAlpha(Math.abs(diff), profile));
 }
 ```
 
@@ -284,7 +311,7 @@ For developers designing autonomous motorized mounts (stepper motor-driven Az/Al
 ```
 
 ### 4.2. Mitigation of Electromagnetic Anomaly Disturbances
-* **Soft-Iron & Hard-Iron Calibration:** Magnetometers mounted near electric stepper motors experience magnetic bias. A compulsory "Figure 8" rotation calibration procedure updates 3D offset matrices prior to aligning.
+* **Soft-Iron & Hard-Iron Calibration:** Magnetometers mounted near electric stepper motors experience magnetic bias. Dedicated hardware should run a "Figure 8" rotation calibration that updates its 3D offset matrices before aligning. (In the phone app, a web page cannot run or open the OS calibration; the app's figure-8 wizard instead guides the phone through enough orientations for iOS/Android to recalibrate themselves, and on iOS it reports the resulting compass accuracy.)
 * **Separation Distance:** Mount magnetometer sensors at least 15 cm away from high-current motor drivers and ferrous metal components (e.g. steel counterweight shafts).
 * **Dual-Sensor Fusion Option:** Combine 3-axis magnetometer reading with an optical gyro rate sensor (`d_theta/dt`) for dead-reckoning during rapid motor slews.
 
@@ -294,7 +321,7 @@ For developers designing autonomous motorized mounts (stepper motor-driven Az/Al
 
 | Algorithm Module | Formula / Logic | Target Tolerance | Primary Purpose |
 | :--- | :--- | :--- | :--- |
-| **NOAA WMM2025 Magnetic Declination** | Official NOAA $N=12$ Spherical Harmonics Matrix | `± 0.1°` | 100% offline exact conversion from Magnetic Compass to True Geographic Heading worldwide |
+| **NOAA WMM2025 Magnetic Declination** | Official $N=12$ spherical harmonics with secular variation | Matches NOAA test values to `0.01°` | Offline conversion from magnetic to true heading worldwide |
 | **Azimuth Differential** | `ΔAz = (B_target - H_true) mod 360` | `≤ 1.5°` | Drive Left/Right Base Rotation |
 | **Elevation Differential** | `ΔAlt = (isParallel ? |90 - Pitch| : (Pitch > 90 ? |180 - Pitch| : Pitch)) - abs(lat)` | `≤ 1.0°` | Drive Up/Down Altitude Wedge across all mounting orientations |
 | **Adaptive EMA Filter** | `α = f(abs(Δtheta))` | Dynamic (`0.06` to `0.22`) | Smooth high-frequency noise without phase delay |
