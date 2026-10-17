@@ -1,15 +1,18 @@
-const CACHE_NAME = 'polar-align-cache';
+// Bump APP_VERSION with package.json on every release so phones drop the old cache.
+// (tests/math.test.mjs checks that this, package.json and index.html agree.)
+const APP_VERSION = '1.1.0';
+const CACHE_NAME = `polar-align-${APP_VERSION}`;
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
+  `./app.js?v=${APP_VERSION}`,
   './package.json',
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
   './vendor/tailwindcss.js',
   './vendor/react.production.min.js',
-  './vendor/react-dom.production.min.js',
-  './vendor/babel.min.js'
+  './vendor/react-dom.production.min.js'
 ];
 
 self.addEventListener('install', (event) => {
