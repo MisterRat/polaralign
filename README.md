@@ -17,15 +17,23 @@ If the azimuth card says **No compass signal**, the browser is not providing a n
 
 ## Development
 
-The app source lives in `src/` and is compiled to `app.js` with esbuild. The site is served straight from the repository root (GitHub Pages), so commit the rebuilt `app.js` with every change.
+The app source lives in `src/`. `npm run build` compiles it to `app.js` with esbuild and generates `app.css` with the Tailwind CLI (only the classes the app uses, so no styling work happens on the phone). The site is served straight from the repository root (GitHub Pages), so commit the rebuilt `app.js` and `app.css` with every change; CI fails if they are out of date.
 
 ```bash
-npm install
-npm run build   # compile src/ -> app.js
+npm ci
+npm run build   # compile src/ -> app.js and app.css
 npm test        # NOAA WMM2025 test values, filter and version checks
 ```
 
-When releasing, bump the version in `package.json`, `sw.js` (`APP_VERSION`) and the `app.js?v=` query in `index.html`; `npm test` fails if they disagree.
+If you add a new source file that contains Tailwind class names, make sure it is covered by `content` in `tailwind.config.cjs`. Build class names as whole strings (`'text-red-400'`), not by joining pieces (`'text-' + color`), or Tailwind will not see them.
+
+When releasing, bump the version in `package.json`, `sw.js` (`APP_VERSION`) and the `app.js?v=` and `app.css?v=` queries in `index.html`; `npm test` fails if they disagree.
+
+`npm audit` reports advisories in Tailwind's build-time dependencies (`braces`, `postcss-selector-parser`). They only run on your machine and in CI against this repo's own files and are not shipped to phones; `npm audit --omit=dev` is clean.
+
+## License
+
+Simple Polar Align is source-available under the [PolyForm Noncommercial License 1.0.0](LICENSE). You may use, study, modify and share it for any noncommercial purpose, including personal stargazing and use by hobby clubs, schools and charities. Commercial use (for example selling it, bundling it with a product, or using it in a paid service) needs a separate license; contact MrRat via https://mrrat.com.
 
 ## 1. Executive Summary
 

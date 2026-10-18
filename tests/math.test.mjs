@@ -28,5 +28,8 @@ assert.ok(Math.abs(smoothLinear(30, 30.2) - 30) < 0.02, 'small jitter should be 
 const version = JSON.parse(read('package.json')).version;
 assert.ok(read('sw.js').includes(`const APP_VERSION = '${version}'`), 'sw.js APP_VERSION must match package.json');
 assert.ok(read('index.html').includes(`./app.js?v=${version}`), 'index.html app.js?v= must match package.json');
+assert.ok(read('index.html').includes(`./app.css?v=${version}`), 'index.html app.css?v= must match package.json');
+assert.ok(read('sw.js').includes('./app.css?v=${APP_VERSION}'), 'sw.js must pre-cache app.css');
+assert.ok(!read('index.html').includes('tailwindcss.js'), 'index.html must not load the in-browser Tailwind script');
 
 console.log('Math and version checks passed.');
