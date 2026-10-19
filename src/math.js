@@ -68,12 +68,13 @@ export function axisElevation({ pitch, planeTilt, parallel }) {
   return a > 90 ? 180 - a : a;
 }
 
-// The measured axis elevation rises when the wedge is raised in every mode,
-// so the instruction depends only on the sign of the error.
-export function elevationHint(measured, target, toleranceDeg = 1.0) {
+// Raise/Lower instruction from the elevation error. Viking mode uses the opposite direction
+// (invert: true), matching how it has been used in the field.
+export function elevationHint(measured, target, { toleranceDeg = 1.0, invert = false } = {}) {
   const err = measured - target;
   if (Math.abs(err) <= toleranceDeg) return 'locked';
-  return err > 0 ? 'lower' : 'raise';
+  const tooHigh = invert ? err < 0 : err > 0;
+  return tooHigh ? 'lower' : 'raise';
 }
 
 // In the parallel modes the compass reads the direction of the phone's top edge, which only

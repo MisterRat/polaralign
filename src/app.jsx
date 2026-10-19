@@ -823,7 +823,8 @@ function App() {
 
   const altError = measuredAlt - targetAlt;
   const absAltError = Math.abs(altError);
-  const altHint = elevationHint(measuredAlt, targetAlt);
+  // Viking keeps its original, field-tested Raise/Lower direction.
+  const altHint = elevationHint(measuredAlt, targetAlt, { invert: isParallelMode && useOppositePoleWhenParallel });
   const altLocked = altHint === 'locked';
 
   // Device Motion listener for real hardware sensors

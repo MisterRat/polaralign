@@ -50,7 +50,7 @@ function run({ alpha, beta, gamma }, lat, viking) {
   const target = (viking ? !(lat < 0) : lat < 0) ? 180 : 0;
   return {
     parallel, measured,
-    hint: elevationHint(measured, Math.abs(lat)),
+    hint: elevationHint(measured, Math.abs(lat), { invert: parallel && viking }),
     azErr: getHeadingDifference(heading, target),
     problem: parallelMountProblem({ pitch: beta, roll: gamma, parallel }),
   };
@@ -65,7 +65,9 @@ for (const lat of [52, 42, 30, 12, -20, -33]) {
         const r = run(pose({ lat, mode, elevErr, azErr }), lat, mode === 'viking');
         assert.equal(r.parallel, mode !== 'perpendicular', `${label}: mode detection`);
         assert.ok(Math.abs(r.measured - (Math.abs(lat) + elevErr)) < 1e-6, `${label}: measured ${r.measured}`);
-        assert.equal(r.hint, elevErr > 1 ? 'lower' : elevErr < -1 ? 'raise' : 'locked', `${label}: hint`);
+        // Viking keeps its original (inverted) instruction; see elevationHint.
+        const high = mode === 'viking' ? 'raise' : 'lower', low = mode === 'viking' ? 'lower' : 'raise';
+        assert.equal(r.hint, elevErr > 1 ? high : elevErr < -1 ? low : 'locked', `${label}: hint`);
         assert.ok(Math.abs(r.azErr + azErr) < 1e-6, `${label}: azimuth error ${r.azErr}`);
         assert.equal(r.problem, null, `${label}: no mount warning`);
         n++;
