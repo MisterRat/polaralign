@@ -2,7 +2,10 @@
 // Simple Polar Align — application source.
 // Built into ../app.js by `npm run build` (esbuild). React/ReactDOM are loaded as globals from ./vendor.
 import { calculateMagneticDeclination, isMagneticModelExpired } from './wmm.js';
-import { normalizeAngle, getHeadingDifference, smoothAngle, smoothLinear } from './math.js';
+import {
+  normalizeAngle, getHeadingDifference, smoothAngle, smoothLinear,
+  isParallelMount, planeTiltFrom, axisElevation, elevationHint, parallelMountProblem,
+} from './math.js';
 
 const { useState, useEffect, useRef } = React;
 
@@ -538,10 +541,7 @@ function App() {
       smoothedRollRef.current = curR;
 
       // 3D surface plane tilt from horizontal ground
-      const radB = (rawPitch * Math.PI) / 180;
-      const radG = (rawRoll * Math.PI) / 180;
-      const cosGz = Math.abs(Math.cos(radB) * Math.cos(radG));
-      const rawPlaneTilt = Math.acos(Math.min(1, Math.max(-1, cosGz))) * (180 / Math.PI);
+      const rawPlaneTilt = planeTiltFrom(rawPitch, rawRoll);
       const curPT = smoothLinear(smoothedPlaneTiltRef.current, rawPlaneTilt);
       smoothedPlaneTiltRef.current = curPT;
 
@@ -785,11 +785,14 @@ function App() {
   const sensorPitch = orientation.pitch !== null ? Math.abs(orientation.pitch) : 0;
   const sensorPlaneTilt = (orientation.planeTilt !== undefined && orientation.planeTilt !== null) ? orientation.planeTilt : sensorPitch;
 
-  const isParallelMode = !manualSensorMode && (
-    useOppositePoleWhenParallel || 
-    sensorPitch > 90 || 
-    (sensorPitch < 45 && orientation.roll !== null && Math.abs(orientation.roll) > 15)
-  );
+  // Normal Parallel is recognised from the phone being past vertical; Viking only when chosen.
+  // (Roll is deliberately not used: a phone rolled in a Perpendicular mount must stay Perpendicular.)
+  const isParallelMode = !manualSensorMode && isParallelMount(orientation.pitch || 0, useOppositePoleWhenParallel);
+  const parallelProblem = manualSensorMode ? null : parallelMountProblem({
+    pitch: orientation.pitch || 0,
+    roll: orientation.roll || 0,
+    parallel: isParallelMode,
+  });
 
   const flipToOpposite = useOppositePoleWhenParallel;
   const effectiveSouthern = flipToOpposite ? !isSouthern : isSouthern;
@@ -809,23 +812,20 @@ function App() {
 
   const azDiff = getHeadingDifference(trueHeading, targetBearing);
   const absAzError = Math.abs(azDiff);
-  const azLocked = headingAvailable && !compassAccuracyPoor && absAzError <= 1.5;
+  const azLocked = headingAvailable && !compassAccuracyPoor && !parallelProblem && absAzError <= 1.5;
 
   const targetAlt = Math.abs(currentLat);
-  const rawPitch = manualSensorMode
+  // Polar-axis elevation: the top edge's elevation in Perpendicular mode, or 90° minus the screen's
+  // tilt in the parallel modes (see axisElevation in math.js).
+  const measuredAlt = manualSensorMode
     ? simPitch
-    : (sensorPitch > 90 ? Math.abs(180 - sensorPitch) : sensorPitch);
-
-  let measuredAlt = rawPitch;
-  if (!manualSensorMode && isParallelMode) {
-    // Parallel Mounting (Normal Parallel & Viking Mode): Phone long axis is orthogonal (90°) to polar axis.
-    // Raw pitch measures (90° - Latitude), so elevation is |90° - rawPitch|.
-    measuredAlt = Math.abs(90 - rawPitch);
-  }
+    : axisElevation({ pitch: sensorPitch, planeTilt: sensorPlaneTilt, parallel: isParallelMode });
 
   const altError = measuredAlt - targetAlt;
   const absAltError = Math.abs(altError);
-  const altLocked = absAltError <= 1.0;
+  // Viking keeps its original, field-tested Raise/Lower direction.
+  const altHint = elevationHint(measuredAlt, targetAlt, { invert: isParallelMode && useOppositePoleWhenParallel });
+  const altLocked = altHint === 'locked';
 
   // Device Motion listener for real hardware sensors
   useEffect(() => {
@@ -1380,6 +1380,17 @@ function App() {
               </div>
             )}
 
+            {headingAvailable && parallelProblem && (
+              <div className="mb-2 p-2 bg-amber-950/50 border border-amber-700/70 rounded-xl text-[11px] text-amber-200 text-left flex items-start gap-1.5">
+                <Icon name="alert-triangle" className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
+                <span>
+                  {parallelProblem === 'upside-down'
+                    ? 'The phone is upside down. Turn it so its top edge points up, or azimuth will be 180° off.'
+                    : `The phone is turned ${Math.abs(orientation.roll).toFixed(0)}° in its mount. Straighten it so the top edge points straight up, or azimuth will be off.`}
+                </span>
+              </div>
+            )}
+
             {magneticModelExpired && (
               <div className="mb-2 p-2 bg-rose-950/50 border border-rose-800 rounded-xl text-[11px] text-rose-200 text-left flex items-start gap-1.5">
                 <Icon name="alert-circle" className="w-4 h-4 shrink-0 mt-0.5 text-rose-400" />
@@ -1465,7 +1476,7 @@ function App() {
                   <span className="text-emerald-400 flex items-center justify-center gap-1.5 text-xl sm:text-2xl">
                     <Icon name="check-circle-2" className="w-6 h-6" /> Altitude Matched to Target Latitude!
                   </span>
-                ) : ((isParallelMode && useOppositePoleWhenParallel) ? (altError < 0) : (altError > 0)) ? (
+                ) : altHint === 'lower' ? (
                   <span className="text-cyan-400">Lower Wedge Tilt by <strong className="text-white">{absAltError.toFixed(1)}°</strong> ⬇</span>
                 ) : (
                   <span className="text-cyan-400">Raise Wedge Tilt by <strong className="text-white">{absAltError.toFixed(1)}°</strong> ⬆</span>
@@ -1965,7 +1976,7 @@ function App() {
                   <ul className="text-[11px] text-slate-300 space-y-0.5 pl-2 pt-1 font-sans">
                     <li><strong className="text-slate-400">Facing:</strong> Hemisphere Pole</li>
                     <li><strong className="text-slate-400">Phone Mount Setup:</strong> phone held next to or behind the tracker</li>
-                    <li><strong className="text-slate-400">Phone Position:</strong> Screen facing DOWN with the back middle pointing at the pole.</li>
+                    <li><strong className="text-slate-400">Phone Position:</strong> Screen facing DOWN with the back middle pointing at the pole, top edge pointing straight up (not turned to either side).</li>
                   </ul>
                 </div>
 
@@ -1978,7 +1989,7 @@ function App() {
                   <ul className="text-[11px] text-slate-300 space-y-0.5 pl-2 pt-1 font-sans">
                     <li><strong className="text-slate-400">Facing:</strong> Opposite Direction of your Pole</li>
                     <li><strong className="text-slate-400">Phone Mount Setup:</strong> phone held next to or behind the tracker</li>
-                    <li><strong className="text-slate-400">Phone Position:</strong> Screen facing UP with the back middle pointing at the opposite pole.</li>
+                    <li><strong className="text-slate-400">Phone Position:</strong> Screen facing UP with the back middle pointing at the opposite pole, top edge pointing straight up (not turned to either side).</li>
                   </ul>
                 </div>
               </div>

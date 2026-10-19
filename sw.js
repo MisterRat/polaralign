@@ -1,6 +1,6 @@
 // Bump APP_VERSION with package.json on every release so phones drop the old cache.
 // (tests/math.test.mjs checks that this, package.json and index.html agree.)
-const APP_VERSION = '1.2.1';
+const APP_VERSION = '1.2.2';
 const CACHE_NAME = `polar-align-${APP_VERSION}`;
 const ASSETS_TO_CACHE = [
   './',
