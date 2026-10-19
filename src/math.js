@@ -39,3 +39,50 @@ export function smoothAngle(previous, raw, profile = HEADING_FILTER) {
   const diff = getHeadingDifference(previous, raw);
   return normalizeAngle(previous + diff * adaptiveAlpha(Math.abs(diff), profile));
 }
+
+// ---- Mounting geometry -------------------------------------------------------------------------
+// pitch = device beta, roll = device gamma (degrees, W3C DeviceOrientation conventions).
+// planeTilt = angle between the screen and the horizontal, acos(|cos(beta)·cos(gamma)|).
+//
+// Perpendicular mode: the phone's top edge lies along the polar axis (screen up). The top edge's
+//   elevation is exactly |beta| (180 - |beta| past vertical), whatever the phone's roll.
+// Parallel modes (Normal: screen down, back toward the pole; Viking: screen up, back toward the
+//   opposite pole): the screen normal lies along the polar axis, so the axis elevation is
+//   90° - planeTilt, again independent of how the phone is turned in its mount.
+
+// Normal Parallel puts the phone past vertical (|beta| > 90). Viking is only chosen explicitly,
+// because its pose looks like Perpendicular mode to the sensors.
+export function isParallelMount(pitch, vikingMode) {
+  return Boolean(vikingMode) || Math.abs(pitch) > 90;
+}
+
+export function planeTiltFrom(pitch, roll) {
+  const d2r = Math.PI / 180;
+  const c = Math.abs(Math.cos(pitch * d2r) * Math.cos(roll * d2r));
+  return Math.acos(Math.min(1, c)) / d2r;
+}
+
+export function axisElevation({ pitch, planeTilt, parallel }) {
+  if (parallel) return 90 - planeTilt;
+  const a = Math.abs(pitch);
+  return a > 90 ? 180 - a : a;
+}
+
+// The measured axis elevation rises when the wedge is raised in every mode,
+// so the instruction depends only on the sign of the error.
+export function elevationHint(measured, target, toleranceDeg = 1.0) {
+  const err = measured - target;
+  if (Math.abs(err) <= toleranceDeg) return 'locked';
+  return err > 0 ? 'lower' : 'raise';
+}
+
+// In the parallel modes the compass reads the direction of the phone's top edge, which only
+// matches the polar axis when the top edge points straight up and the phone is not turned
+// in its mount. Returns 'upside-down', 'turned' or null.
+export const PARALLEL_TURN_WARN_DEG = 3;
+export function parallelMountProblem({ pitch, roll, parallel }) {
+  if (!parallel) return null;
+  if (pitch < 0) return 'upside-down';
+  if (Math.abs(roll) > PARALLEL_TURN_WARN_DEG) return 'turned';
+  return null;
+}

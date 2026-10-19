@@ -1,14 +1,14 @@
 {
   "name": "polaralign",
   "private": true,
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "Simple Polar Align: offline phone PWA for polar-aligning equatorial mounts and star trackers.",
   "type": "module",
   "scripts": {
     "build": "npm run build:js && npm run build:css",
     "build:js": "esbuild src/app.jsx --bundle --format=iife --target=es2019 --jsx-factory=React.createElement --jsx-fragment=React.Fragment --minify --sourcemap --outfile=app.js",
     "build:css": "tailwindcss -c tailwind.config.cjs -i src/app.css -o app.css --minify",
-    "test": "node tests/wmm.test.mjs && node tests/math.test.mjs",
+    "test": "node tests/wmm.test.mjs && node tests/math.test.mjs && node tests/mount.test.mjs",
     "check": "npm run build && git diff --exit-code -- app.js app.js.map app.css"
   },
   "devDependencies": {
