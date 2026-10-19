@@ -1,7 +1,7 @@
 {
   "name": "polaralign",
   "private": true,
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Simple Polar Align: offline phone PWA for polar-aligning equatorial mounts and star trackers.",
   "type": "module",
   "scripts": {

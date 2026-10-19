@@ -1003,21 +1003,21 @@ function App() {
       )}
 
       {/* HEADER */}
-      <header className="flex items-center justify-between p-3 rounded-2xl border mb-3 bg-slate-900 border-slate-800">
-        <div className="flex items-center space-x-2.5">
+      <header className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-2xl border mb-3 bg-slate-900 border-slate-800">
+        <div className="flex items-center space-x-2.5 shrink-0">
           <div className="p-2 rounded-xl bg-cyan-500/20 text-cyan-400">
             <Icon name="compass" className="w-5 h-5 animate-pulse" />
           </div>
           <div>
-            <h1 className="font-bold text-sm leading-tight">Simple Polar Align</h1>
+            <h1 className="font-bold text-sm leading-tight whitespace-nowrap">Simple Polar Align</h1>
           </div>
         </div>
 
-        <div className="flex items-center space-x-1.5">
+        <div className="flex flex-wrap items-center justify-end gap-1.5 ml-auto">
           {isReady && location && (
             <button
               onClick={() => setShowManualModal(true)}
-              className="px-2 py-1.5 rounded-xl text-xs font-mono font-semibold bg-slate-800 text-cyan-300 border border-slate-700 hover:border-cyan-500/40 transition-all cursor-pointer flex items-center gap-1"
+              className="px-2 py-1.5 rounded-xl text-xs font-mono font-semibold bg-slate-800 text-cyan-300 border border-slate-700 hover:border-cyan-500/40 transition-all cursor-pointer flex items-center gap-1 whitespace-nowrap"
               title="View or edit coordinates"
             >
               <Icon name="map-pin" className="w-3.5 h-3.5 text-cyan-400" />
@@ -1027,25 +1027,27 @@ function App() {
 
           <button
             onClick={() => setShowGuideModal(true)}
-            className="px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 hover:bg-indigo-500/30 transition-all cursor-pointer flex items-center gap-1"
+            className="px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 hover:bg-indigo-500/30 transition-all cursor-pointer flex items-center gap-1 whitespace-nowrap"
             title="User Guide & Documentation"
+            aria-label="Guide"
           >
             <Icon name="book-open" className="w-3.5 h-3.5" />
-            <span>Guide</span>
+            <span className="max-[379px]:hidden">Guide</span>
           </button>
 
           {isReady && (
             <button
               onClick={() => setShowCalibrationModal(true)}
-              className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold border flex items-center gap-1 transition-all cursor-pointer ${
+              className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold border flex items-center gap-1 whitespace-nowrap transition-all cursor-pointer ${
                 calibratedSuccessfully 
                   ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' 
                   : 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
               }`}
               title="Calibrate Compass (Figure 8)"
+              aria-label={calibratedSuccessfully ? 'Calibrated' : 'Calibrate'}
             >
               <Icon name="rotate-cw" className="w-3.5 h-3.5" />
-              <span>{calibratedSuccessfully ? 'Calibrated' : 'Calibrate'}</span>
+              <span className="max-[379px]:hidden">{calibratedSuccessfully ? 'Calibrated' : 'Calibrate'}</span>
             </button>
           )}
         </div>
