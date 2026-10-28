@@ -3,6 +3,8 @@
 > **Engineering Reference Guide**  
 > *Architectural overview, mathematical formulas, coordinate transforms, and sensor fusion algorithms for automated and semi-automated astronomical polar alignment systems.*
 
+<p align="center"><img src="docs/screenshot.png" width="320" alt="Simple Polar Align on a phone: azimuth locked on True North, elevation 1.5° off"></p>
+
 ---
 
 ## Using the app
